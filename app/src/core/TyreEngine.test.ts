@@ -47,7 +47,8 @@ describe("compound pace and usability", () => {
   it("uses the documented dry pace deltas", () => {
     expect(getCompoundPaceResult({ compound: "soft", trackCondition: "dry" }).deltaSecondsPerLap).toBe(-0.6);
     expect(getCompoundPaceResult({ compound: "hard", trackCondition: "dry" }).deltaSecondsPerLap).toBe(0.55);
-    expect(getCompoundPaceResult({ compound: "wet", trackCondition: "dry" }).deltaSecondsPerLap).toBe(4);
+    expect(getCompoundPaceResult({ compound: "intermediate", trackCondition: "dry" }).deltaSecondsPerLap).toBe(3);
+    expect(getCompoundPaceResult({ compound: "wet", trackCondition: "dry" }).deltaSecondsPerLap).toBe(6);
   });
 
   it("marks slick tyres unusable in heavy wet conditions", () => {
