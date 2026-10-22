@@ -440,6 +440,45 @@ export default function CareerMode() {
     }
   }
 
+  async function startDevelopment() {
+    if (!database || !activeSave || !dashboard) return;
+    setDevelopmentBusy(true); setDevelopmentError("");
+    try {
+      await startCareerDevelopmentProject(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        tier: activeSave.tier,
+        season: numberField(dashboard.career, "current_season", 1),
+        round: numberField(dashboard.career, "current_race", 1),
+        projectCatalogId: developmentProjectId,
+        size: developmentSize,
+        worldSeed: String(dashboard.career.world_seed),
+      });
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setDevelopmentError(caught instanceof Error ? caught.message : "Project development gagal dimulai.");
+    } finally { setDevelopmentBusy(false); }
+  }
+
+  async function cancelDevelopment(projectInstanceId: string) {
+    if (!database || !activeSave || !dashboard) return;
+    setDevelopmentBusy(true); setDevelopmentError("");
+    try {
+      const refund = await cancelCareerDevelopmentProject(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        projectInstanceId,
+        season: numberField(dashboard.career, "current_season", 1),
+        round: numberField(dashboard.career, "current_race", 1),
+        tier: activeSave.tier,
+      });
+      setDevelopmentError("Project dibatalkan. Refund: " + formatCash(refund) + ".");
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setDevelopmentError(caught instanceof Error ? caught.message : "Project tidak dapat dibatalkan.");
+    } finally { setDevelopmentBusy(false); }
+  }
+
   async function settleSeason() {
     if (!database || !activeSave || !dashboard) return;
     setSettlingSeason(true); setSettlementError("");
