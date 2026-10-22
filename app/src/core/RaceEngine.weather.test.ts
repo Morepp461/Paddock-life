@@ -21,7 +21,7 @@ const base: RaceInput = {
 describe("race weather integration", () => {
   it("applies per-lap conditions and exposes them in lap results", () => {
     const weatherByLap = ["dry", "dry", "damp", "wet", "wet", "heavy-wet", "wet", "dry"] as const;
-    const result = simulateRace({ ...base, weatherByLap });
+    const result = simulateRace({ ...base, drivers: base.drivers.map((driver) => ({ ...driver, compound: "wet" as const })), weatherByLap });
     expect(result.laps.map((lap) => lap[0].trackCondition)).toEqual(weatherByLap);
     expect(result.laps.every((lap) => lap.length === 2)).toBe(true);
   });
