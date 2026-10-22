@@ -60,8 +60,13 @@ describe("deterministic race kernel", () => {
     expect(result.classification[1].gapToLeaderSeconds).toBeGreaterThanOrEqual(0);
   });
 
-  it("rejects invalid lap counts, duplicate IDs, and unusable wet-weather tyres", () => {
+  it("rejects invalid lap counts, duplicate IDs, unavailable compounds, and unusable wet-weather tyres", () => {
     expect(() => simulateRace({ ...raceInput, totalLaps: 7 })).toThrow(RangeError);
+    expect(() => simulateRace({
+      ...raceInput,
+      tier: 5,
+      drivers: raceInput.drivers.map((driver) => ({ ...driver, compound: "soft" as const })),
+    })).toThrow("tidak tersedia");
     expect(() => simulateRace({ ...raceInput, drivers: [raceInput.drivers[0], { ...raceInput.drivers[1], id: "drv-a" }] })).toThrow("ID driver duplikat");
     expect(() => simulateRace({
       ...raceInput,
