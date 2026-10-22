@@ -89,3 +89,29 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
   const race = simulateRace(raceInput);
   return { qualifying, sprint, race, sprintLaps };
 }
+
+
+const MAIN_RACE_POINTS: Readonly<Record<number, number>> = {
+  1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 2, 10: 1,
+};
+const SPRINT_RACE_POINTS: Readonly<Record<number, number>> = {
+  1: 8, 2: 7, 3: 6, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1,
+};
+
+/** PRD Section 6.2 and Division Ruleset: fastest lap bonus applies only in Tiers 1–3. */
+export function calculateMainRacePoints(tier: TierId, finishPosition: number, fastestLap: boolean): number {
+  if (!Number.isSafeInteger(finishPosition) || finishPosition < 1) {
+    throw new RangeError("Posisi finis harus integer positif.");
+  }
+  const basePoints = MAIN_RACE_POINTS[finishPosition] ?? 0;
+  const bonusEligible = tier <= 3 && finishPosition <= 10 && fastestLap;
+  return basePoints + (bonusEligible ? 1 : 0);
+}
+
+/** Sprint points are fixed at 8–1 for P1–P8 and have no fastest-lap bonus. */
+export function calculateSprintRacePoints(finishPosition: number): number {
+  if (!Number.isSafeInteger(finishPosition) || finishPosition < 1) {
+    throw new RangeError("Posisi finis sprint harus integer positif.");
+  }
+  return SPRINT_RACE_POINTS[finishPosition] ?? 0;
+}
