@@ -16,6 +16,17 @@ describe("document-backed tier configuration", () => {
     expect(tiers.map((tier) => TIER_CONFIG[tier].paceFactor)).toEqual([1, 0.96, 0.9, 0.84, 0.7, 0.6]);
   });
 
+  it("contains the documented tyre, incident, reliability, and weekend multipliers", () => {
+    const tiers: TierId[] = [1, 2, 3, 4, 5, 6];
+    expect(tiers.map((tier) => TIER_CONFIG[tier].tyreWearMultiplier)).toEqual([1, 1, 0.9, 0.75, 0.5, 0.4]);
+    expect(tiers.map((tier) => TIER_CONFIG[tier].incidentMultiplier)).toEqual([0.95, 1, 1.05, 1.15, 1.3, 1.4]);
+    expect(tiers.map((tier) => TIER_CONFIG[tier].reliabilityMultiplier)).toEqual([1, 0.95, 0.85, 0.7, 0.4, 0.3]);
+    expect(TIER_CONFIG[1].sprintRacesPerSeason).toBe(8);
+    expect(TIER_CONFIG[2].sprintRacesPerSeason).toBe(6);
+    expect(TIER_CONFIG[5].allowedDryCompounds).toEqual(["hard"]);
+    expect(TIER_CONFIG[6].allowedWetCompounds).toEqual(["wet"]);
+  });
+
   it("keeps tier-specific restrictions explicit", () => {
     expect(TIER_CONFIG[4].features.drs).toBe(false);
     expect(TIER_CONFIG[4].features.scheduledPitStop).toBe(false);
