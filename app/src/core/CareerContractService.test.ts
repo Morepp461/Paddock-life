@@ -81,6 +81,9 @@ describe("career contract service", () => {
       expect(result.decision).toBe("rejected");
       expect(result.rejectionReasons).toHaveLength(2);
       await expect(offerDriverContract(database, input)).rejects.toThrow("satu race");
+      await database.run("UPDATE career SET current_race = 2 WHERE career_id = ?;", [career.careerId]);
+      const afterOneRace = await offerDriverContract(database, input);
+      expect(afterOneRace.decision).toBe("rejected");
       expect(await database.query("SELECT COUNT(*) AS count FROM driver_negotiation_cooldowns WHERE career_id = ? AND driver_id = ? AND team_id = ?;", [
         career.careerId, String(driver.driver_id), teamId,
       ])).toEqual([{ count: 1 }]);
