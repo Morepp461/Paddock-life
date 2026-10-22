@@ -2,6 +2,7 @@ import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import type { IDatabase } from "../storage/IDatabase";
 import { loadCircuitSeedFromPublic } from "./SeedDataLoader";
 import { loadTeamPoolSeedFromPublic } from "./TeamSeedLoader";
+import { loadNamePoolFromPublic } from "./NamePoolLoader";
 
 /** Seeds division metadata from the canonical game config into a fresh career DB. */
 export async function seedDivisions(database: IDatabase): Promise<void> {
@@ -32,13 +33,20 @@ export async function seedStaticWorldDataFromPublic(
 ): Promise<void> {
   await loadCircuitSeedFromPublic(database, fetcher);
   await loadTeamPoolSeedFromPublic(database, fetcher);
+  await loadNamePoolFromPublic(database, fetcher);
   await seedDivisions(database);
-  const [circuits, teams, divisions] = await Promise.all([
+  const [circuits, teams, divisions, nameCount, countryNames, blockedNames] = await Promise.all([
     database.query("SELECT COUNT(*) AS count FROM circuits;"),
     database.query("SELECT COUNT(*) AS count FROM team_pool;"),
     database.query("SELECT COUNT(*) AS count FROM divisions;"),
+    database.query("SELECT COUNT(*) AS count FROM name_culture_pool;"),
+    database.query("SELECT COUNT(*) AS count FROM nationality_name_cultures;"),
+    database.query("SELECT COUNT(*) AS count FROM blocked_names;"),
   ]);
   if (Number(circuits[0]?.count ?? 0) !== 30) throw new Error("World seed harus memiliki 30 sirkuit.");
   if (Number(teams[0]?.count ?? 0) !== 72) throw new Error("World seed harus memiliki 72 tim pool.");
   if (Number(divisions[0]?.count ?? 0) !== 6) throw new Error("World seed harus memiliki 6 divisi.");
+  if (Number(nameCount[0]?.count ?? 0) !== 3325) throw new Error("World seed harus memiliki tepat 3.325 nama.");
+  if (Number(countryNames[0]?.count ?? 0) !== 199) throw new Error("World seed harus memiliki 199 negara nama.");
+  if (Number(blockedNames[0]?.count ?? 0) < 51) throw new Error("World seed harus memiliki 51 nama yang diblokir.");
 }
