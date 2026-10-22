@@ -3,6 +3,7 @@ import { hashSeed, sampleBoundedNormal } from "./RandomDistributions";
 import { SeededRandom } from "./SeededRandom";
 import { classifyQualifying, type QualifyingResult, type QualifyingSessionTimes } from "./QualifyingEngine";
 import { simulateRace, type RaceDriverInput, type RaceInput, type RaceResult } from "./RaceEngine";
+import { advanceWeather, createWeatherRandom, type WeatherState, type WeatherTransitionMatrix } from "./WeatherEngine";
 
 export interface RaceWeekendDriver extends RaceDriverInput {
   readonly qualifyingScore: number;
@@ -20,6 +21,8 @@ export interface RaceWeekendInput {
   readonly trackCondition: RaceInput["trackCondition"];
   readonly referenceSetupScore: number;
   readonly hasSprint: boolean;
+  /** Optional source-configured Markov matrix. Omit to preserve fixed-condition sessions. */
+  readonly weatherTransitionMatrix?: WeatherTransitionMatrix;
   readonly drivers: readonly RaceWeekendDriver[];
 }
 
@@ -34,6 +37,29 @@ export interface RaceWeekendResult {
 function sessionCount(tier: TierId): number {
   const format = TIER_CONFIG[tier].qualifyingFormat;
   return format === "q1-24-12-q2" ? 2 : format === "q1-24-18-q2-18-12-q3" ? 3 : 1;
+}
+
+function createWeatherSchedule(
+  input: RaceWeekendInput,
+  sessionSeed: string | number,
+  totalLaps: number,
+): readonly RaceInput["trackCondition"][] | undefined {
+  const matrix = input.weatherTransitionMatrix;
+  if (!matrix) return undefined;
+  const schedule: RaceInput["trackCondition"][] = [input.trackCondition];
+  let state: WeatherState = {
+    condition: input.trackCondition,
+    rainLapsElapsed: input.trackCondition === "dry" ? 0 : 1,
+  };
+  for (let lap = 2; lap <= totalLaps; lap += 1) {
+    state = advanceWeather(
+      state,
+      matrix,
+      createWeatherRandom(sessionSeed, input.season, input.round, lap),
+    );
+    schedule.push(state.condition);
+  }
+  return schedule;
 }
 
 function makeQualifyingSession(input: RaceWeekendInput, sessionIndex: number): QualifyingSessionTimes {
@@ -82,12 +108,17 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
     drivers,
   };
   const sprintLaps = input.hasSprint ? Math.max(8, Math.round(input.totalLaps * 0.3)) : null;
+  const sprintSeed = String(input.worldSeed) + ":sprint";
   const sprint = sprintLaps === null ? null : simulateRace({
     ...raceInput,
-    worldSeed: String(input.worldSeed) + ":sprint",
+    worldSeed: sprintSeed,
     totalLaps: sprintLaps,
+    weatherByLap: createWeatherSchedule(input, sprintSeed, sprintLaps),
   });
-  const race = simulateRace(raceInput);
+  const race = simulateRace({
+    ...raceInput,
+    weatherByLap: createWeatherSchedule(input, input.worldSeed, input.totalLaps),
+  });
   const raceLapRows = race.laps.flat();
   const fastestLapSeconds = Math.min(...raceLapRows.map((lap) => lap.lapTimeSeconds));
   const fastestLapDriverIds = [...new Set(raceLapRows.filter((lap) => lap.lapTimeSeconds === fastestLapSeconds).map((lap) => lap.driverId))].sort();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
+import type { WeatherTransitionMatrix } from "./WeatherEngine";
 
 function drivers(count: number): RaceWeekendDriver[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -41,6 +42,36 @@ describe("race weekend orchestration", () => {
     expect(first.sprint?.totalLaps).toBe(8);
     expect(first.race.totalLaps).toBe(12);
     expect(first.race.classification.map((row) => row.driverId)).toEqual(second.race.classification.map((row) => row.driverId));
+  });
+
+  it("applies configured weather transitions deterministically and preserves minimum rain duration", () => {
+    const alwaysDry: WeatherTransitionMatrix = {
+      dry: { dry: 1, damp: 0, wet: 0, "heavy-wet": 0 },
+      damp: { dry: 1, damp: 0, wet: 0, "heavy-wet": 0 },
+      wet: { dry: 1, damp: 0, wet: 0, "heavy-wet": 0 },
+      "heavy-wet": { dry: 1, damp: 0, wet: 0, "heavy-wet": 0 },
+    };
+    const input = {
+      worldSeed: "weather-weekend-test",
+      season: 1,
+      round: 2,
+      tier: 1 as const,
+      estimatedCircuitLapSeconds: 90,
+      totalLaps: 12,
+      trackAbrasion: 50,
+      trackTemperatureCelsius: 25,
+      trackCondition: "wet" as const,
+      referenceSetupScore: 50,
+      hasSprint: false,
+      weatherTransitionMatrix: alwaysDry,
+      drivers: drivers(24),
+    };
+    const first = simulateRaceWeekend(input);
+    const second = simulateRaceWeekend(input);
+    const conditions = first.race.laps.map((lap) => lap[0]!.trackCondition);
+    expect(conditions.slice(0, 6).every((condition) => condition !== "dry")).toBe(true);
+    expect(conditions).toEqual(second.race.laps.map((lap) => lap[0]!.trackCondition));
+    expect(conditions[6]).toBe("dry");
   });
 
   it("does not create a sprint session when the calendar round has no sprint", () => {
