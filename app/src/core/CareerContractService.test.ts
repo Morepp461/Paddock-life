@@ -71,6 +71,26 @@ describe("career contract service", () => {
     }
   });
 
+  it("does not allow a third active race driver in the same season", async () => {
+    const { database, career, teamId, driver } = await setup();
+    try {
+      const currentDrivers = await database.query(
+        "SELECT contract_id FROM driver_contracts WHERE team_id = ? AND end_season = 1 ORDER BY contract_id LIMIT 2;",
+        [teamId],
+      );
+      expect(currentDrivers).toHaveLength(2);
+      for (const row of currentDrivers) {
+        await database.run("UPDATE driver_contracts SET end_season = 2 WHERE contract_id = ?;", [String(row.contract_id)]);
+      }
+      await expect(offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: 100000, role: "lead",
+      })).rejects.toThrow("Dua kursi race");
+    } finally {
+      await database.close();
+    }
+  });
+
   it("records rejection reasons and blocks same-score re-negotiation for one race", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
