@@ -344,6 +344,45 @@ export default function CareerMode() {
 
   useEffect(() => {
     let cancelled = false;
+    async function loadMarket() {
+      if (tab !== "roster" || !database || !activeSave || !dashboard) return;
+      try {
+        const season = numberField(dashboard.career, "current_season", 1);
+        const band = TIER_CONFIG[activeSave.tier].driverAge;
+        const rows = await database.query(
+          `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
+             d.ambition, d.market_value, d.is_academy_driver
+           FROM drivers d
+           WHERE d.career_id = ? AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
+             AND NOT EXISTS (
+               SELECT 1 FROM driver_contracts dc
+               WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+             )
+           ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
+           LIMIT 100;`,
+          [activeSave.careerId, band.min, band.max, season, season],
+        );
+        if (!cancelled) {
+          setMarketDrivers(rows);
+          if (!rows.some((row) => field(row, "driver_id") === marketDriverId)) {
+            const first = rows[0];
+            setMarketDriverId(first ? field(first, "driver_id") : "");
+            if (first) {
+              const salary = Math.max(1, Math.round(numberField(first, "market_value") * 0.12 * (1 + 0.1 * (numberField(first, "ambition", 50) - 50) / 50)));
+              setMarketSalary(String(salary));
+            }
+          }
+        }
+      } catch (caught) {
+        if (!cancelled) setMarketError(caught instanceof Error ? caught.message : "Driver market gagal dimuat.");
+      }
+    }
+    void loadMarket();
+    return () => { cancelled = true; };
+  }, [tab, database, activeSave?.careerId, activeSave?.tier, dashboard]);
+
+  useEffect(() => {
+    let cancelled = false;
     void loadCatalog().then((loaded) => {
       if (!cancelled) {
         setCatalog(loaded);
