@@ -333,6 +333,7 @@ export default function CareerMode() {
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
   const [marketDrivers, setMarketDrivers] = useState<Row[]>([]);
+  const [marketSeatsAvailable, setMarketSeatsAvailable] = useState(false);
   const [marketDriverId, setMarketDriverId] = useState("");
   const [marketSalary, setMarketSalary] = useState("100000");
   const [marketDuration, setMarketDuration] = useState("2");
@@ -349,6 +350,11 @@ export default function CareerMode() {
       try {
         const season = numberField(dashboard.career, "current_season", 1);
         const band = TIER_CONFIG[activeSave.tier].driverAge;
+        const seatRows = await database.query(
+          "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;",
+          [String(dashboard.team.team_id), season, season],
+        );
+        if (!cancelled) setMarketSeatsAvailable(numberField(seatRows[0], "occupied_seats") < 2);
         const rows = await database.query(
           `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
              d.ambition, d.market_value, d.is_academy_driver
@@ -664,6 +670,7 @@ export default function CareerMode() {
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>TRANSFER MARKET</small><h2>Recruit a driver</h2></div><span>{marketDrivers.length} eligible drivers</span></div>
           <p className="muted-text">Hanya driver tanpa kontrak aktif di season ini dan sesuai band umur tier yang ditampilkan. Engine akan mengevaluasi gaji, reputasi, role, durasi, bonus, kas, dan cooldown negosiasi.</p>
+          {!marketSeatsAvailable && <p className="inline-error">Dua kursi race saat ini sudah terisi. Rekrutmen akan aktif saat ada kursi kosong; aturan biaya pemutusan kontrak belum didefinisikan di dokumen final.</p>}
           {marketError && <p className="inline-error">{marketError}</p>}
           {marketResult && <div className={marketResult.decision === "accepted" ? "notice success" : "notice"}>
             <strong>{marketResult.decision === "accepted" ? "Contract accepted" : marketResult.decision === "counter-offer" ? "Counter-offer received" : "Offer rejected"}</strong>
@@ -691,7 +698,7 @@ export default function CareerMode() {
               <label>Race role<select value={marketRole} onChange={(event) => setMarketRole(event.target.value as "lead" | "second")}><option value="lead">Lead driver</option><option value="second">Second driver</option></select></label>
               <label>Signing bonus (¢p)<input type="number" min="0" step="1" required value={marketBonus} onChange={(event) => setMarketBonus(event.target.value)} /></label>
             </div>
-            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
+            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
           </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
         </article>
       </section>}
