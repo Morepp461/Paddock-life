@@ -1,6 +1,8 @@
 import type { Difficulty } from "./InitialDistributions";
 import type { TierId } from "./GameConfig";
-import { normalizeFullName } from "../seed/NameGenerator";
+function normalizeCareerText(value: string): string {
+  return value.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("en-US").replace(/\\s+/g, " ");
+}
 
 export type CareerPath = "new-team" | "takeover";
 export type TeamStrength = "Kuat" | "Menengah" | "Lemah";
@@ -96,7 +98,7 @@ export function validateCareerSetupDraft(
   if (!/^[\p{L}\p{N} -]+$/u.test(managerName)) {
     throw new Error("Nama manager hanya boleh berisi huruf, angka, spasi, dan tanda hubung.");
   }
-  if (normalizedSet(context.blockedManagerNames).has(normalizeFullName(managerName))) {
+  if (normalizedSet(context.blockedManagerNames).has(normalizeCareerText(managerName))) {
     throw new Error("Nama manager tidak dapat digunakan.");
   }
   const managerCountryCode = validateCountry(draft.managerCountryCode, context.availableCountryCodes, "Kewarganegaraan manager");
@@ -111,15 +113,15 @@ export function validateCareerSetupDraft(
     const input = draft.newTeam;
     if (!input) throw new Error("Identitas tim baru belum lengkap.");
     const name = validateName(input.name, 3, 24, "Nama tim");
-    if (normalizedSet(context.blockedTeamNames).has(normalizeFullName(name))) {
+    if (normalizedSet(context.blockedTeamNames).has(normalizeCareerText(name))) {
       throw new Error("Nama tim tidak dapat digunakan.");
     }
-    if (normalizedSet(context.existingTeamNames).has(normalizeFullName(name))) {
+    if (normalizedSet(context.existingTeamNames).has(normalizeCareerText(name))) {
       throw new Error("Nama tim sudah dipakai dalam career ini.");
     }
     const code = input.code.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(code)) throw new Error("Kode tim harus terdiri dari tepat 3 huruf A–Z.");
-    if (normalizedSet(context.existingTeamCodes).has(normalizeFullName(code))) {
+    if (normalizedSet(context.existingTeamCodes).has(normalizeCareerText(code))) {
       throw new Error("Kode tim sudah dipakai dalam career ini.");
     }
     const countryCode = validateCountry(input.countryCode, context.availableCountryCodes, "Negara basis tim");
