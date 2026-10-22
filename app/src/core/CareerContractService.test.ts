@@ -35,6 +35,7 @@ async function setup() {
     takeoverTeamId: "D3-01",
   }, { fetcher: seedFetcher, managerGender: "male" });
   const team = (await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [career.careerId]))[0]!;
+  await database.run("UPDATE driver_contracts SET end_season = 1 WHERE team_id = ? AND start_season <= 2 AND end_season >= 2;", [String(team.team_id)]);
   const tier = TIER_CONFIG[3];
   const driver = (await database.query(
     "SELECT d.driver_id, d.market_value, d.ambition FROM drivers d WHERE d.career_id = ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.market_value > 0 AND d.age BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM driver_contracts dc WHERE dc.driver_id = d.driver_id AND dc.start_season <= 2 AND dc.end_season >= 2) ORDER BY d.driver_id LIMIT 1;",
@@ -70,6 +71,26 @@ describe("career contract service", () => {
     }
   });
 
+  it("does not allow a third active race driver in the same season", async () => {
+    const { database, career, teamId, driver } = await setup();
+    try {
+      const currentDrivers = await database.query(
+        "SELECT contract_id FROM driver_contracts WHERE team_id = ? AND end_season = 1 ORDER BY contract_id LIMIT 2;",
+        [teamId],
+      );
+      expect(currentDrivers).toHaveLength(2);
+      for (const row of currentDrivers) {
+        await database.run("UPDATE driver_contracts SET end_season = 2 WHERE contract_id = ?;", [String(row.contract_id)]);
+      }
+      await expect(offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: 100000, role: "lead",
+      })).rejects.toThrow("Dua kursi race");
+    } finally {
+      await database.close();
+    }
+  });
+
   it("records rejection reasons and blocks same-score re-negotiation for one race", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
@@ -81,6 +102,9 @@ describe("career contract service", () => {
       expect(result.decision).toBe("rejected");
       expect(result.rejectionReasons).toHaveLength(2);
       await expect(offerDriverContract(database, input)).rejects.toThrow("satu race");
+      await database.run("UPDATE career SET current_race = 2 WHERE career_id = ?;", [career.careerId]);
+      const afterOneRace = await offerDriverContract(database, input);
+      expect(afterOneRace.decision).toBe("rejected");
       expect(await database.query("SELECT COUNT(*) AS count FROM driver_negotiation_cooldowns WHERE career_id = ? AND driver_id = ? AND team_id = ?;", [
         career.careerId, String(driver.driver_id), teamId,
       ])).toEqual([{ count: 1 }]);

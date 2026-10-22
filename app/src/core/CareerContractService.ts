@@ -84,6 +84,13 @@ async function contractContext(database: IDatabase, input: DriverContractOfferIn
     [input.driverId, input.startSeason, input.startSeason],
   );
   if (activeContracts.length) throw new Error("Driver sudah memiliki kontrak aktif pada season yang ditawarkan.");
+  const teamSeatRows = await database.query(
+    "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;",
+    [input.teamId, input.startSeason, input.startSeason],
+  );
+  if (n(teamSeatRows[0], "occupied_seats") >= 2) {
+    throw new Error("Dua kursi race tim sudah terisi untuk season kontrak ini. Kontrak baru membutuhkan kursi kosong.");
+  }
   const demandFactor = generateDriverDemandFactor({
     worldSeed: String(career.world_seed), season: input.startSeason, driverId: input.driverId,
   });
@@ -139,8 +146,10 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
     [input.careerId, input.driverId, input.teamId],
   );
   const cooldown = cooldownRows[0];
-  if (cooldown && currentSeason <= n(cooldown, "until_season") && currentRace <= n(cooldown, "until_race")
-      && score.score < n(cooldown, "last_score") + 0.1) {
+  if (cooldown && (
+      currentSeason < n(cooldown, "until_season") ||
+      (currentSeason === n(cooldown, "until_season") && currentRace < n(cooldown, "until_race"))
+    ) && score.score < n(cooldown, "last_score") + 0.1) {
     throw new Error("Driver menolak negosiasi ulang sampai setelah satu race, kecuali skor penawaran naik minimal 0.10.");
   }
   if (score.decision === "accepted") {
