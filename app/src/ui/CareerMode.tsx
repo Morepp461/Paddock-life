@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { simulateRace, type RaceResult } from "../core/RaceEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { hashSeed } from "../core/RandomDistributions";
-import { normalizeFullName, type NamePoolPayload } from "./NameGenerator";
-import { decodeCompressedJson, NAME_POOL_PUBLIC_PARTS, validateNamePool } from "./NamePoolLoader";
-import { validateTeamPoolSeed, type TeamPoolSeedPayload } from "./TeamSeedLoader";
+import { normalizeFullName } from "../seed/NameGenerator";
+import type { NamePoolPayload } from "../seed/NamePoolLoader";
+import { decodeCompressedJson, NAME_POOL_PUBLIC_PARTS, validateNamePool } from "../seed/NamePoolLoader";
+import { validateTeamPoolSeed, type TeamPoolSeedPayload } from "../seed/TeamSeedLoader";
 import { validateCareerSetupDraft, type CareerSetupDraft, type CareerTeamCandidate } from "../core/CareerSetupEngine";
-import { generateCareerWorld, type CareerGenerationResult } from "./CareerWorldGenerator";
+import { generateCareerWorld, type CareerGenerationResult } from "../seed/CareerWorldGenerator";
 import { openCareerDatabase } from "../storage/DatabaseFactory";
 import type { IDatabase } from "../storage/IDatabase";
-import RaceWorkbench from "../ui/RaceWorkbench";
+import RaceWorkbench from "./RaceWorkbench";
 
 type CatalogTeam = {
   id: string; name: string; code: string; country: string; tier: TierId;
