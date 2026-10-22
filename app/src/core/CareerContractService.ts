@@ -139,8 +139,10 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
     [input.careerId, input.driverId, input.teamId],
   );
   const cooldown = cooldownRows[0];
-  if (cooldown && currentSeason <= n(cooldown, "until_season") && currentRace <= n(cooldown, "until_race")
-      && score.score < n(cooldown, "last_score") + 0.1) {
+  if (cooldown && (
+      currentSeason < n(cooldown, "until_season") ||
+      (currentSeason === n(cooldown, "until_season") && currentRace < n(cooldown, "until_race"))
+    ) && score.score < n(cooldown, "last_score") + 0.1) {
     throw new Error("Driver menolak negosiasi ulang sampai setelah satu race, kecuali skor penawaran naik minimal 0.10.");
   }
   if (score.decision === "accepted") {
