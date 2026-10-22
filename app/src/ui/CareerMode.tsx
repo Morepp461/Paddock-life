@@ -4,6 +4,7 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
+import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
 import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
 import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
@@ -331,6 +332,15 @@ export default function CareerMode() {
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
+  const [marketDrivers, setMarketDrivers] = useState<Row[]>([]);
+  const [marketDriverId, setMarketDriverId] = useState("");
+  const [marketSalary, setMarketSalary] = useState("100000");
+  const [marketDuration, setMarketDuration] = useState("2");
+  const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
+  const [marketBonus, setMarketBonus] = useState("0");
+  const [marketBusy, setMarketBusy] = useState(false);
+  const [marketError, setMarketError] = useState("");
+  const [marketResult, setMarketResult] = useState<ContractOfferResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
