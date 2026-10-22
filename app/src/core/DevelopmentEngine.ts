@@ -89,6 +89,7 @@ export interface DevelopmentProjectInput {
   readonly currentSecondaryAttribute?: number;
   readonly divisionMeanSecondaryAttribute?: number;
   readonly category: "aero" | "engine" | "chassis" | "reliability";
+  readonly secondaryReliabilityEffect?: "positive" | "negative";
   readonly worldSeed: string | number;
 }
 
@@ -102,6 +103,7 @@ export interface DevelopmentProjectResult {
   readonly secondaryAttributeGain: number;
   readonly reliabilityGain: number;
   readonly reliabilityPenalty: number;
+  readonly secondaryReliabilityDelta: number;
   readonly effectiveDurationRaces: number;
   readonly successProbability: number;
 }
@@ -134,6 +136,9 @@ export function resolveDevelopmentProject(input: DevelopmentProjectInput): Devel
   const reliabilityProject = input.category === "reliability";
   const reliabilityGain = success && reliabilityProject ? config.reliabilityGain : 0;
   const reliabilityPenalty = success && !reliabilityProject ? config.reliabilityPenalty : 0;
+  const secondaryReliabilityDelta = success && input.secondaryReliabilityEffect !== undefined
+    ? secondaryAttributeGain * (input.secondaryReliabilityEffect === "positive" ? 1 : -1)
+    : 0;
 
   return {
     projectId: input.projectId,
@@ -145,6 +150,7 @@ export function resolveDevelopmentProject(input: DevelopmentProjectInput): Devel
     secondaryAttributeGain: secondaryGain,
     reliabilityGain,
     reliabilityPenalty,
+    secondaryReliabilityDelta,
     effectiveDurationRaces: config.durationRaces * (1 - facility.durationReduction),
     successProbability: DEVELOPMENT_SUCCESS_PROBABILITY,
   };
