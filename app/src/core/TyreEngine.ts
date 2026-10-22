@@ -104,6 +104,8 @@ export function calculateWearPenaltySeconds(wearPercent: number): number {
 export function getCompoundPaceResult(input: TyreConditionInput): CompoundPaceResult {
   const { compound, trackCondition } = input;
   if (trackCondition === "dry") {
+    if (compound === "intermediate") return { deltaSecondsPerLap: 3, usable: true };
+    if (compound === "wet") return { deltaSecondsPerLap: 6, usable: true };
     return { deltaSecondsPerLap: TYRE_COMPOUND_CONFIG[compound].dryPaceDeltaSeconds, usable: true };
   }
   if (trackCondition === "damp") {
