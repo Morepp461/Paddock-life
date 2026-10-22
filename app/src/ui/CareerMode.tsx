@@ -3,6 +3,7 @@ import { type RaceResult } from "../core/RaceEngine";
 import { simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
+import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
 import type { NamePoolPayload } from "../seed/NamePoolLoader";
@@ -23,7 +24,7 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[];
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[];
 };
 type Tab = "overview" | "calendar" | "roster" | "staff" | "sponsors" | "finance" | "standings";
 
@@ -91,7 +92,7 @@ async function loadCatalog(): Promise<Catalog> {
   };
 }
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
-  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings] = await Promise.all([
+  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements] = await Promise.all([
     database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]),
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
@@ -101,9 +102,10 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     database.query("SELECT staff_id, role, name, age, skill, salary, is_free_agent FROM staff WHERE career_id = ? AND team_id = ? ORDER BY role;", [careerId, playerTeamId]),
     database.query("SELECT type, category, amount, balance_after, season, race, occurred_at FROM finances WHERE team_id = ? ORDER BY occurred_at DESC LIMIT 30;", [playerTeamId]),
     database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = 1 AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", ["T" + tier]),
+    database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = 1;", [careerId, playerTeamId]),
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
-  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings };
+  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements };
 }
 
 async function upsertDriverStanding(
@@ -303,6 +305,8 @@ export default function CareerMode() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [runningRace, setRunningRace] = useState(false);
+  const [settlingSeason, setSettlingSeason] = useState(false);
+  const [settlementError, setSettlementError] = useState("");
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
