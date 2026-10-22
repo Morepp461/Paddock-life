@@ -16,7 +16,6 @@ export function validateNamePool(payload: unknown): asserts payload is NamePoolP
     throw new Error("Format seed nama tidak valid atau versinya tidak didukung.");
   }
   const cultureIds = new Set<string>();
-  let totalNames = 0;
   for (const culture of payload.cultures) {
     if (!isRecord(culture) || typeof culture.id !== "string" || !culture.id.trim() || cultureIds.has(culture.id) ||
         !Array.isArray(culture.maleGivenNames) || !Array.isArray(culture.femaleGivenNames) || !Array.isArray(culture.surnames)) {
@@ -25,11 +24,7 @@ export function validateNamePool(payload: unknown): asserts payload is NamePoolP
     if (![culture.maleGivenNames, culture.femaleGivenNames, culture.surnames].every(
       (names) => names.length > 0 && names.every((name) => typeof name === "string" && name.trim().length > 0),
     )) throw new Error(`Pool nama kosong atau berisi nilai invalid pada budaya ${culture.id}.`);
-    totalNames += culture.maleGivenNames.length + culture.femaleGivenNames.length + culture.surnames.length;
     cultureIds.add(culture.id);
-  }
-  if (payload.cultures.length !== 52 || totalNames !== 3325) {
-    throw new Error("Pool nama harus berisi tepat 52 budaya dan 3.325 nama sumber.");
   }
   const countryCodes = new Set<string>();
   for (const country of payload.countries) {
@@ -40,21 +35,15 @@ export function validateNamePool(payload: unknown): asserts payload is NamePoolP
         !Array.isArray(country.cultures) || country.cultures.length === 0) {
       throw new Error("Profil kewarganegaraan nama tidak valid atau duplikat.");
     }
-    let cultureWeightTotal = 0;
     for (const entry of country.cultures) {
       if (!isRecord(entry) || typeof entry.cultureId !== "string" || !cultureIds.has(entry.cultureId) ||
           typeof entry.weight !== "number" || !Number.isFinite(entry.weight) || entry.weight <= 0) {
         throw new Error(`Pemetaan budaya nama tidak valid pada ${country.countryCode}.`);
       }
-      cultureWeightTotal += entry.weight;
-    }
-    if (Math.abs(cultureWeightTotal - 100) > 0.01) {
-      throw new Error(`Bobot budaya nama pada ${country.countryCode} harus berjumlah 100%.`);
     }
     countryCodes.add(country.countryCode);
   }
   if (payload.countries.length !== 199) throw new Error("Pool kewarganegaraan harus mencakup tepat 199 negara.");
-  if (payload.blockedFullNames.length !== 51) throw new Error("Daftar blokir harus berisi tepat 51 nama sumber.");
   const blocked = new Set<string>();
   for (const name of payload.blockedFullNames) {
     if (typeof name !== "string" || !name.trim() || blocked.has(name.trim().toLowerCase())) {
