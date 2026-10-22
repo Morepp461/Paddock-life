@@ -12,7 +12,7 @@ import {
   type ContractOfferEvaluation,
 } from "./ContractNegotiationEngine";
 
-type ContractOfferInput = {
+export type DriverContractOfferInput = {
   readonly careerId: string;
   readonly teamId: string;
   readonly driverId: string;
@@ -62,12 +62,11 @@ function lowScoreReasons(terms: ContractAcceptanceTerms): string[] {
   ];
   return weighted.sort((a, b) => a.value - b.value).slice(0, 2).map((item) => item.label);
 }
-async function contractContext(database: IDatabase, input: ContractOfferInput) {
-  const [careerRows, teamRows, driverRows, standings, cars] = await Promise.all([
+async function contractContext(database: IDatabase, input: DriverContractOfferInput) {
+  const [careerRows, teamRows, driverRows, cars] = await Promise.all([
     database.query("SELECT world_seed, current_season, current_race FROM career WHERE career_id = ?;", [input.careerId]),
     database.query("SELECT team_id, reputation, cash, division_id, is_active, is_player_team FROM teams WHERE team_id = ? AND career_id = ?;", [input.teamId, input.careerId]),
     database.query("SELECT driver_id, name, age, ambition, loyalty, reputation, market_value, is_retired, is_academy_driver FROM drivers WHERE driver_id = ? AND career_id = ?;", [input.driverId, input.careerId]),
-    database.query("SELECT points FROM standings WHERE season = ? AND division_id = ? AND team_id = ? AND driver_id IS NULL;", [input.startSeason - 1, "", input.teamId]),
     database.query("SELECT AVG(engine_power + aero + high_speed + medium_speed + low_speed + mechanical_grip + traction + braking + tyre_management) / 9 AS car_score FROM cars WHERE team_id = ? AND season = ?;", [input.teamId, input.startSeason - 1]),
   ]);
   const career = careerRows[0], team = teamRows[0], driver = driverRows[0];
