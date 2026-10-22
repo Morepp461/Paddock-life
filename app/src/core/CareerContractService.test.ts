@@ -92,8 +92,8 @@ describe("career contract service", () => {
     const { database, career, teamId, driver } = await setup();
     try {
       const currentDrivers = await database.query(
-        "SELECT driver_id FROM driver_contracts WHERE team_id = ? AND start_season <= 1 AND end_season >= 1 LIMIT 2;",
-        [teamId],
+        "SELECT driver_id FROM drivers WHERE career_id = ? AND driver_id <> ? AND is_retired = 0 AND is_academy_driver = 0 LIMIT 2;",
+        [career.careerId, String(driver.driver_id)],
       );
       expect(currentDrivers).toHaveLength(2);
       for (let index = 0; index < currentDrivers.length; index += 1) {
