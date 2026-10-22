@@ -88,4 +88,31 @@ describe("career contract service", () => {
       await database.close();
     }
   });
+  it("does not allow a third active race driver on the same team", async () => {
+    const { database, career, teamId, driver } = await setup();
+    try {
+      const currentDrivers = await database.query(
+        "SELECT driver_id FROM driver_contracts WHERE team_id = ? AND start_season <= 1 AND end_season >= 1 LIMIT 2;",
+        [teamId],
+      );
+      expect(currentDrivers).toHaveLength(2);
+      for (let index = 0; index < currentDrivers.length; index += 1) {
+        await database.run(
+          "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary) VALUES (?, ?, ?, 2, 3, 1);",
+          ["seat_limit_" + index, String(currentDrivers[index]!.driver_id), teamId],
+        );
+      }
+      const demandFactor = generateDriverDemandFactor({ worldSeed: "contract-service-test", season: 2, driverId: String(driver.driver_id) });
+      const askingSalary = calculateDriverAskingSalary({
+        marketValue: Number(driver.market_value), ambition: Number(driver.ambition), demandFactor,
+      });
+      await expect(offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: Math.round(askingSalary * 1.2), role: "lead",
+      })).rejects.toThrow("Dua kursi race tim sudah terisi");
+    } finally {
+      await database.close();
+    }
+  });
+
 });
