@@ -22,8 +22,9 @@ export function validateSponsorPoolSeed(payload: unknown): asserts payload is Sp
   if (!isRecord(payload) || payload.schemaVersion !== 1 || !Array.isArray(payload.columns) || !Array.isArray(payload.rows)) {
     throw new Error("Format seed sponsor tidak valid.");
   }
-  if (payload.columns.length !== SPONSOR_SOURCE_COLUMNS.length ||
-      !SPONSOR_SOURCE_COLUMNS.every((column, index) => payload.columns[index] === column)) {
+  const columns = payload.columns as unknown[];
+  if (columns.length !== SPONSOR_SOURCE_COLUMNS.length ||
+      !SPONSOR_SOURCE_COLUMNS.every((column, index) => columns[index] === column)) {
     throw new Error("Kolom seed sponsor tidak cocok dengan schema yang diharapkan.");
   }
   if (payload.rows.length !== 100) throw new Error("Pool sponsor harus berisi tepat 100 sponsor.");
