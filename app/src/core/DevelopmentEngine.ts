@@ -9,8 +9,8 @@ export const DEVELOPMENT_PROJECT_CONFIG: Readonly<Record<DevelopmentProjectSize,
   readonly reliabilityPenalty: number;
 }>> = {
   minor: { nominalGain: 0.8, durationRaces: 2, reliabilityGain: 2, reliabilityPenalty: 0 },
-  standard: { nominalGain: 1.6, durationRaces: 3, reliabilityGain: 4, reliabilityPenalty: 1 },
-  major: { nominalGain: 3.2, durationRaces: 5, reliabilityGain: 7, reliabilityPenalty: 3 },
+  standard: { nominalGain: 1.6, durationRaces: 3, reliabilityGain: 4, reliabilityPenalty: -1 },
+  major: { nominalGain: 3.2, durationRaces: 5, reliabilityGain: 7, reliabilityPenalty: -3 },
 };
 
 export const DEVELOPMENT_SUCCESS_PROBABILITY = 0.7;
@@ -89,7 +89,6 @@ export interface DevelopmentProjectInput {
   readonly currentSecondaryAttribute?: number;
   readonly divisionMeanSecondaryAttribute?: number;
   readonly category: "aero" | "engine" | "chassis" | "reliability";
-  readonly riskClass?: "low" | "medium" | "high";
   readonly worldSeed: string | number;
 }
 
@@ -134,10 +133,7 @@ export function resolveDevelopmentProject(input: DevelopmentProjectInput): Devel
     : 0;
   const reliabilityProject = input.category === "reliability";
   const reliabilityGain = success && reliabilityProject ? config.reliabilityGain : 0;
-  const reliabilityPenalty = success && !reliabilityProject && input.riskClass !== undefined
-    ? input.riskClass === "high" ? config.reliabilityPenalty
-      : input.riskClass === "medium" ? 1 : 0
-    : 0;
+  const reliabilityPenalty = success && !reliabilityProject ? config.reliabilityPenalty : 0;
 
   return {
     projectId: input.projectId,
