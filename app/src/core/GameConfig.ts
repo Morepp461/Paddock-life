@@ -13,6 +13,7 @@ export interface TierConfig {
   readonly name: string;
   readonly paceFactor: number;
   readonly raceDistanceFactor: number;
+  readonly roundsPerSeason: number;
   readonly requiredBudget: number;
   readonly referenceDriverOverall: number;
   readonly referenceCarScore: number;
@@ -43,6 +44,7 @@ export interface TierConfig {
 export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   1: {
     id: 1, name: "Caleris World Championship", paceFactor: 1.0, raceDistanceFactor: 1.0,
+    roundsPerSeason: undefined,
     requiredBudget: 248_000_000, referenceDriverOverall: 76, referenceCarScore: 74,
     driverAge: { min: 18, max: 45 },
     tyreWearMultiplier: 1, incidentMultiplier: 0.95, reliabilityMultiplier: 1,
@@ -53,6 +55,7 @@ export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   },
   2: {
     id: 2, name: "Elite Series", paceFactor: 0.96, raceDistanceFactor: 0.85,
+    roundsPerSeason: undefined,
     requiredBudget: 98_000_000, referenceDriverOverall: 68, referenceCarScore: 66,
     driverAge: { min: 17, max: 25 },
     tyreWearMultiplier: 1, incidentMultiplier: 1, reliabilityMultiplier: 0.95,
@@ -63,6 +66,7 @@ export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   },
   3: {
     id: 3, name: "Rising Series", paceFactor: 0.90, raceDistanceFactor: 0.70,
+    roundsPerSeason: undefined,
     requiredBudget: 38_000_000, referenceDriverOverall: 60, referenceCarScore: 58,
     driverAge: { min: 16, max: 19 },
     tyreWearMultiplier: 0.9, incidentMultiplier: 1.05, reliabilityMultiplier: 0.85,
@@ -73,6 +77,7 @@ export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   },
   4: {
     id: 4, name: "Challenger Series", paceFactor: 0.84, raceDistanceFactor: 0.55,
+    roundsPerSeason: undefined,
     requiredBudget: 15_000_000, referenceDriverOverall: 52, referenceCarScore: 50,
     driverAge: { min: 15, max: 18 },
     tyreWearMultiplier: 0.75, incidentMultiplier: 1.15, reliabilityMultiplier: 0.7,
@@ -83,6 +88,7 @@ export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   },
   5: {
     id: 5, name: "Rookie Kart Series", paceFactor: 0.70, raceDistanceFactor: 0.40,
+    roundsPerSeason: undefined,
     requiredBudget: 6_000_000, referenceDriverOverall: 40, referenceCarScore: 38,
     driverAge: { min: 10, max: 14 },
     tyreWearMultiplier: 0.5, incidentMultiplier: 1.3, reliabilityMultiplier: 0.4,
@@ -93,6 +99,7 @@ export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   },
   6: {
     id: 6, name: "Regional Karting League", paceFactor: 0.60, raceDistanceFactor: 0.20,
+    roundsPerSeason: undefined,
     requiredBudget: 3_000_000, referenceDriverOverall: 32, referenceCarScore: 30,
     driverAge: { min: 8, max: 11 },
     tyreWearMultiplier: 0.4, incidentMultiplier: 1.4, reliabilityMultiplier: 0.3,
