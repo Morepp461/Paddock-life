@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { simulateRace, type RaceResult } from "../core/RaceEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
+import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
 import type { NamePoolPayload } from "../seed/NamePoolLoader";
@@ -182,6 +183,33 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         await database.run(
           "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
           [String(race.race_id) + "_team_" + teamId, "T" + tier, teamId, summary.points, summary.wins, summary.podiums],
+        );
+      }
+    }
+    const teamRows = await database.query(
+      "SELECT team_id, cash FROM teams WHERE career_id = ? AND division_id = ? AND is_active = 1 ORDER BY team_id;",
+      [careerId, "T" + tier],
+    );
+    const rounds = TIER_CONFIG[tier].roundsPerSeason;
+    const raceCosts = [
+      { category: "operating-cost", amount: -calculateOperatingCostPerRound(tier) },
+      { category: "driver-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageDriverPayroll(tier) / rounds) },
+      { category: "staff-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageStaffPayroll(tier) / rounds) },
+    ];
+    for (const teamRow of teamRows) {
+      let balance = Number(teamRow.cash);
+      for (const cost of raceCosts) {
+        if (cost.amount === 0) continue;
+        const next = calculateBalanceAfterTransaction({ currentBalance: balance, amount: cost.amount, tier });
+        if (!next.withinOverdraft) {
+          throw new Error("Race dibatalkan: tim " + String(teamRow.team_id) + " akan melewati batas overdraft setelah " + cost.category + ".");
+        }
+        balance = next.balanceAfter;
+        const transactionId = String(race.race_id) + "_" + cost.category + "_" + String(teamRow.team_id);
+        await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [balance, String(teamRow.team_id)]);
+        await database.run(
+          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, 1, ?, 'expense', ?, ?, ?);",
+          [transactionId, String(teamRow.team_id), Number(race.round), cost.category, cost.amount, balance],
         );
       }
     }
