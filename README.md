@@ -4,35 +4,43 @@ Offline-first motorsport management simulation for Android. The final project do
 
 ## Monorepo
 - `app/` — React + TypeScript + Vite + Capacitor Android application.
-- `app/src/core/` — pure TypeScript simulation modules; no DOM or Capacitor imports.
-- `app/src/storage/` — SQLite adapters, migrations, save orchestration, and finance ledger.
-- `app/src/seed/` — source-data validators and world seed loaders.
+- `app/src/core/` — deterministic simulation, qualifying, race-weekend, economy, sponsor, development and settlement logic.
+- `app/src/storage/` — SQLite adapters, schema migrations, finance ledger and save orchestration.
+- `app/src/seed/` — source-data validation and deterministic career-world generation.
 - `backend/` — reserved for Supabase SQL and Edge Functions.
 - `adminpanel/` — separate web admin panel, planned in the documented phase.
 - `tools/` — seed validation and build helpers.
-- `.github/workflows/` — CI and manual debug APK build.
+- `.github/workflows/` — CI and Android debug APK build.
 
-## Current implementation status
+## Current test readiness
 
-Implemented and covered by automated tests:
-- Seeded, deterministic race kernel with per-lap weather input.
-- Tyre pace and wear calculations, weather transition engine, qualifying classification, and season calendar generation.
-- Pit-stop loss, incident probability/outcomes, component reliability risk, and neutralization selection.
-- Race report strategy score and five-cause classification.
-- Source-backed initial distributions, 36 development projects, development success/gain formulas, and project eligibility checks.
-- RequiredBudget-based economy formulas, overdraft rules, rewarded-ad limits, and atomic SQLite finance ledger.
-- 30-circuit and 72-team source pools with schema/data validation.
-- Local SQLite schema migrations, native Capacitor SQLite adapter, and checksum-verified rotating save orchestration.
+The current main branch is an **early playable development build**, not a complete release. The Android debug APK workflow builds successfully, but the APK still needs a real-device smoke test.
 
-Not yet complete; do not treat the current app as publish-ready:
-- The complete name seed from `Pool_Nama_v2` (3,325 names, 52 cultures, 199 countries) has not yet been imported. The name-generation engine exists, but career-world generation must not ship until the complete source pool is present and validated.
-- Career creation/world population, full team/driver/staff generation, and persistent in-game workflows are not yet wired into the UI.
-- The save manager still needs a concrete native file/database snapshot adapter and restore integration.
-- Race systems such as incidents, pit stops, component failures, and neutralization still need full orchestration in the race kernel.
-- Remaining economy, contracts, sponsors, media, regulations, season progression, cloud save, monetization validation, and UI screens require implementation and simulation tests.
-- An Android debug APK build and device smoke test must pass before release readiness can be claimed.
+### Implemented and covered by automated tests
+- Deterministic seeded RNG and lap-by-lap race simulation, tyre pace/wear, weather transitions, qualifying classification and season calendar.
+- Race-weekend orchestration: qualifying, optional sprint, main race, result persistence, driver/constructor standings and points.
+- Separate pit-stop, incident, reliability and neutralization engines. Their logic is tested independently, but not all of these systems are yet orchestrated by the career race flow.
+- Canonical source pools: 30 circuits, 72 teams, 3,325 names across 52 cultures and 199 country profiles, blocked full names, and 100 sponsor entries. Seed validators check the source data.
+- Deterministic career creation and world generation, including team takeover/new-team paths, local SQLite career data, generated roster/staff/managers, sponsor offers and save-slot discovery.
+- Sponsor offer acceptance/rejection and active sponsor contract persistence.
+- Source-backed economy formulas, opening cash/entry-fee ledger entries, per-round operating/payroll costs, overdraft protection and atomic finance writes.
+- Idempotent season financial settlement for prize money, commercial revenue, achieved sponsor targets, debt interest and facility maintenance.
+- 36 development catalog projects and deterministic development-engine calculations.
+- Local SQLite schema migrations, native Capacitor SQLite adapter and checksum-verified save orchestration interfaces.
+- Race QA workbench for simulation checks.
 
-## Development
+### Known gaps before the game can be considered fully testable
+- **Race integration:** the Career Mode race flow still uses simplified dry-track inputs and does not yet fully orchestrate pit stops, incidents, component failures, dynamic weather transitions and safety-car/virtual-safety-car effects into each race result.
+- **Qualifying-to-race behavior:** the qualifying grid is persisted and displayed, but the race kernel still needs source-backed starting-grid integration; no undocumented grid-start time penalty should be added.
+- **Development gameplay:** the 36-project catalog and engine exist, but starting, progressing, completing and cancelling projects are not yet wired into a persistent player-facing workflow.
+- **Season loop:** season settlement is available, but next-season rollover, transfers, contracts, driver/staff progression, retirements and promotion/relegation are not complete.
+- **Save recovery:** save slots can be found and resumed, but the rotating backup/snapshot/restore path needs concrete end-to-end integration and failure-recovery tests.
+- **Roster management:** persistent contract actions, recruitment/release rules and complete team management are still incomplete.
+- **Platform services:** cloud sync, authentication, server-authoritative rewarded ads and purchase validation are not complete; do not enable real monetization until their validation is in place.
+- **Device verification:** APK build success is not a substitute for installing and smoke-testing the APK on an Android device.
+
+## Development commands
+
 Requires Node.js 24 and npm.
 
 ```sh
@@ -44,11 +52,11 @@ npm run build
 ```
 
 ## Android debug APK
-Open **Actions → Android Debug APK → Run workflow**. The workflow generates the Capacitor Android project, builds a debug APK, and uploads it as an artifact. The APK is not considered verified until the workflow passes and the result is smoke-tested on a device.
+Open **Actions → Android Debug APK → Run workflow**. The workflow builds a debug APK and uploads it as a workflow artifact. Install the artifact on an Android device and smoke-test new career creation, save/resume, a complete race weekend, sponsor actions, finance ledger and season settlement before treating the build as ready for broader testing.
 
-## Rules
-- Work in `feat/<system>` or `fix/<system>` branches; keep `main` stable.
-- Core simulation must be deterministic. RNG must use `SeededRandom`; never use `Math.random()` or `Date.now()` in `app/src/core/`.
+## Engineering rules
+- Use a new `feat/<system>` or `fix/<system>` branch for every change; keep `main` stable.
+- Core simulation must be deterministic. Use `SeededRandom`; never use `Math.random()` or `Date.now()` in `app/src/core/`.
 - Do not invent game rules or balance values. Source them from the final documents and validated game configuration.
-- Keep purchase, entitlement, online reward, and share eligibility validation server-authoritative.
+- Purchase, entitlement, online reward and share eligibility must be server-authoritative.
 - Never commit secrets.
