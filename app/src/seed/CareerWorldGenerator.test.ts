@@ -13,7 +13,8 @@ async function makeDatabase() {
   return database;
 }
 
-function seedFetcher(url: string): Promise<Response> {
+function seedFetcher(input: RequestInfo | URL): Promise<Response> {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const filename = url.replace(/^\/seed\//, "");
   try {
     const body = readFileSync(new URL("../../public/seed/" + filename, import.meta.url), "utf8");
