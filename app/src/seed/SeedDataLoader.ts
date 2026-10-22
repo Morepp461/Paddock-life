@@ -70,7 +70,7 @@ export function validateCircuitSeed(payload: unknown): asserts payload is Column
         !Number.isSafeInteger(row[7]) || Number(row[7]) <= 0) {
       throw new Error(`Lap standar atau jumlah tikungan tidak valid pada ${id}.`);
     }
-    for (const index of [19, 20, 21, 27, 28]) {
+    for (const index of [19, 20, 21]) {
       const value = row[index];
       if (!isFiniteNumber(value) || value < 0 || value > 100 && index < 27) {
         throw new Error(`Atribut sirkuit di luar rentang pada ${id}.`);
