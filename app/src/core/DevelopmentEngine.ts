@@ -57,6 +57,10 @@ function facilityAtLevel(level: number) {
   return FACILITY_POINTS[FACILITY_POINTS.length - 1];
 }
 
+export function calculateEffectiveDevelopmentDuration(size: DevelopmentProjectSize, facilityLevel: number): number {
+  return DEVELOPMENT_PROJECT_CONFIG[size].durationRaces * (1 - facilityAtLevel(facilityLevel).durationReduction);
+}
+
 export function calculateEngineerMultiplier(skill: number): number {
   if (!Number.isFinite(skill) || skill < 0 || skill > 100) throw new RangeError("Skill engineer harus berada pada rentang 0–100.");
   return interpolate(ENGINEER_MULTIPLIER_POINTS, skill);
