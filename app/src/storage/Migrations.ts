@@ -430,6 +430,54 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_season_settlements_career ON season_settlements(career_id, season);
     `,
   },
+  {
+    version: 7,
+    description: "persist active development projects and completed development history",
+    sql: `
+      CREATE TABLE development_projects (
+        project_instance_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        car_id TEXT NOT NULL REFERENCES cars(car_id) ON DELETE CASCADE,
+        project_catalog_id TEXT NOT NULL,
+        project_name TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('aero', 'engine', 'chassis', 'reliability')),
+        size TEXT NOT NULL CHECK (size IN ('minor', 'standard', 'major')),
+        cost INTEGER NOT NULL CHECK (cost >= 0),
+        progress_races REAL NOT NULL DEFAULT 0 CHECK (progress_races >= 0),
+        duration_races REAL NOT NULL CHECK (duration_races > 0),
+        start_season INTEGER NOT NULL CHECK (start_season >= 1),
+        start_round INTEGER NOT NULL CHECK (start_round >= 1),
+        world_seed TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled', 'failed')),
+        result_json TEXT,
+        completed_season INTEGER,
+        completed_round INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX idx_development_projects_active ON development_projects(career_id, team_id, status);
+      CREATE TABLE development_history (
+        history_id TEXT PRIMARY KEY,
+        project_instance_id TEXT NOT NULL REFERENCES development_projects(project_instance_id) ON DELETE CASCADE,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        round INTEGER NOT NULL CHECK (round >= 1),
+        project_catalog_id TEXT NOT NULL,
+        project_name TEXT NOT NULL,
+        size TEXT NOT NULL CHECK (size IN ('minor', 'standard', 'major')),
+        status TEXT NOT NULL CHECK (status IN ('completed', 'cancelled', 'failed')),
+        success INTEGER CHECK (success IS NULL OR success IN (0, 1)),
+        reason TEXT,
+        cost INTEGER NOT NULL CHECK (cost >= 0),
+        refund INTEGER NOT NULL DEFAULT 0 CHECK (refund >= 0),
+        result_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX idx_development_history_team ON development_history(career_id, team_id, season, round);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {

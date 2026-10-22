@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateCancellationRefund,
+  calculateEffectiveDevelopmentDuration,
   calculateDiminishingReturn,
   calculateEngineerMultiplier,
   DEVELOPMENT_PROJECT_CONFIG,
@@ -24,6 +25,11 @@ const base = {
 };
 
 describe("development project model", () => {
+  it("applies documented facility duration reductions", () => {
+    expect(calculateEffectiveDevelopmentDuration("minor", 1)).toBeCloseTo(2 * 0.97);
+    expect(calculateEffectiveDevelopmentDuration("major", 10)).toBeCloseTo(5 * 0.70);
+  });
+
   it("uses documented success chance, cost, nominal gains, and duration", () => {
     expect(DEVELOPMENT_SUCCESS_PROBABILITY).toBe(0.7);
     expect(DEVELOPMENT_PROJECT_CONFIG).toEqual({

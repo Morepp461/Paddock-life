@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type RaceResult } from "../core/RaceEngine";
-import { simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
+import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
+import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
+import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
+import { calculateEffectiveDevelopmentDuration } from "../core/DevelopmentEngine";
+import { calculateDevelopmentProjectCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
 import type { NamePoolPayload } from "../seed/NamePoolLoader";
@@ -24,13 +28,11 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[];
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[];
 };
-type Tab = "overview" | "calendar" | "roster" | "staff" | "sponsors" | "finance" | "standings";
+type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
 const SAVE_INDEX_KEY = "paddock-life-save-slots-v1";
-const POINTS: Readonly<Record<number, number>> = { 1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 2, 10: 1 };
-const SPRINT_POINTS: Readonly<Record<number, number>> = { 1: 8, 2: 7, 3: 6, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1 };
 const TIER_PICKER = [5, 4, 3, 2, 1] as const;
 
 function readSaveSlots(): SaveSlot[] {
@@ -92,7 +94,7 @@ async function loadCatalog(): Promise<Catalog> {
   };
 }
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
-  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements] = await Promise.all([
+  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
     database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]),
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
@@ -103,9 +105,12 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     database.query("SELECT type, category, amount, balance_after, season, race, occurred_at FROM finances WHERE team_id = ? ORDER BY occurred_at DESC LIMIT 30;", [playerTeamId]),
     database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = 1 AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", ["T" + tier]),
     database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = 1;", [careerId, playerTeamId]),
+    database.query("SELECT * FROM cars WHERE team_id = ? AND season = 1 LIMIT 1;", [playerTeamId]),
+    database.query("SELECT * FROM development_projects WHERE career_id = ? AND team_id = ? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_round DESC;", [careerId, playerTeamId]),
+    database.query("SELECT * FROM development_history WHERE career_id = ? AND team_id = ? ORDER BY season DESC, round DESC LIMIT 30;", [careerId, playerTeamId]),
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
-  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements };
+  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, car: cars[0] ?? null, developmentProjects, developmentHistory };
 }
 
 async function upsertDriverStanding(
@@ -204,7 +209,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       for (const row of orderedSprint) {
         const teamId = teamByDriver.get(row.driverId);
         if (!teamId) throw new Error("Tim driver sprint tidak ditemukan.");
-        const points = SPRINT_POINTS[row.position] ?? 0;
+        const points = calculateSprintRacePoints(row.position);
         await database.run(
           "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
           [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
@@ -215,7 +220,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       const sprintTeamPoints = new Map<string, number>();
       for (const row of orderedSprint) {
         const teamId = teamByDriver.get(row.driverId)!;
-        sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + (SPRINT_POINTS[row.position] ?? 0));
+        sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + (calculateSprintRacePoints(row.position)));
       }
       for (const [teamId, points] of sprintTeamPoints) {
         await upsertTeamStanding(database, tier, String(race.race_id) + "_sprint", teamId, points);
@@ -225,7 +230,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     for (const row of orderedRace) {
       const teamId = teamByDriver.get(row.driverId);
       if (!teamId) throw new Error("Tim driver race tidak ditemukan.");
-      const points = POINTS[row.position] ?? 0;
+      const points = calculateMainRacePoints(tier, row.position, fastestRaceDrivers.has(row.driverId));
       const fastestLap = fastestRaceDrivers.has(row.driverId) ? 1 : 0;
       await database.run(
         "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
@@ -239,7 +244,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     for (const row of orderedRace) {
       const teamId = teamByDriver.get(row.driverId)!;
       const current = teamPoints.get(teamId) ?? { points: 0, wins: 0, podiums: 0 };
-      current.points += POINTS[row.position] ?? 0;
+      current.points += calculateMainRacePoints(tier, row.position, fastestRaceDrivers.has(row.driverId));
       if (row.position === 1) current.wins += 1;
       if (row.position <= 3) current.podiums += 1;
       teamPoints.set(teamId, current);
@@ -275,6 +280,9 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         );
       }
     }
+    await advanceCareerDevelopmentProjectsAfterRace(database, {
+      careerId, tier, season: 1, round: Number(race.round),
+    });
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
     await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
@@ -307,6 +315,10 @@ export default function CareerMode() {
   const [runningRace, setRunningRace] = useState(false);
   const [settlingSeason, setSettlingSeason] = useState(false);
   const [settlementError, setSettlementError] = useState("");
+  const [developmentProjectId, setDevelopmentProjectId] = useState("E01");
+  const [developmentSize, setDevelopmentSize] = useState<DevelopmentProjectSize>("minor");
+  const [developmentBusy, setDevelopmentBusy] = useState(false);
+  const [developmentError, setDevelopmentError] = useState("");
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
@@ -427,6 +439,45 @@ export default function CareerMode() {
     }
   }
 
+  async function startDevelopment() {
+    if (!database || !activeSave || !dashboard) return;
+    setDevelopmentBusy(true); setDevelopmentError("");
+    try {
+      await startCareerDevelopmentProject(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        tier: activeSave.tier,
+        season: numberField(dashboard.career, "current_season", 1),
+        round: numberField(dashboard.career, "current_race", 1),
+        projectCatalogId: developmentProjectId,
+        size: developmentSize,
+        worldSeed: String(dashboard.career.world_seed),
+      });
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setDevelopmentError(caught instanceof Error ? caught.message : "Project development gagal dimulai.");
+    } finally { setDevelopmentBusy(false); }
+  }
+
+  async function cancelDevelopment(projectInstanceId: string) {
+    if (!database || !activeSave || !dashboard) return;
+    setDevelopmentBusy(true); setDevelopmentError("");
+    try {
+      const refund = await cancelCareerDevelopmentProject(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        projectInstanceId,
+        season: numberField(dashboard.career, "current_season", 1),
+        round: numberField(dashboard.career, "current_race", 1),
+        tier: activeSave.tier,
+      });
+      setDevelopmentError("Project dibatalkan. Refund: " + formatCash(refund) + ".");
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setDevelopmentError(caught instanceof Error ? caught.message : "Project tidak dapat dibatalkan.");
+    } finally { setDevelopmentBusy(false); }
+  }
+
   async function settleSeason() {
     if (!database || !activeSave || !dashboard) return;
     setSettlingSeason(true); setSettlementError("");
@@ -461,9 +512,26 @@ export default function CareerMode() {
   if (dashboard && activeSave) {
     const team = dashboard.team;
     const nextRace = dashboard.races.find((race) => field(race, "status") === "scheduled");
+    const developmentOptions = DEVELOPMENT_CATALOG.filter((project) => activeSave.tier >= project.minimumTier && activeSave.tier <= project.maximumTier);
+    const selectedDevelopment = developmentOptions.find((project) => project.id === developmentProjectId) ?? developmentOptions[0];
+    const chiefEngineer = dashboard.staff.find((member) => field(member, "role") === "Chief Engineer");
+    const selectedFacilityLevel = selectedDevelopment
+      ? numberField(team, selectedDevelopment.category === "aero" ? "aero_center_level" : selectedDevelopment.category === "engine" ? "engine_dept_level" : selectedDevelopment.category === "chassis" ? "chassis_level" : "rnd_level", 1)
+      : 1;
+    const developmentEligibility = selectedDevelopment ? validateDevelopmentSelection({
+      projectId: selectedDevelopment.id, tier: activeSave.tier, size: developmentSize,
+      chiefEngineerSkill: numberField(chiefEngineer, "skill"), facilityLevel: selectedFacilityLevel,
+    }) : { eligible: false, reasons: ["Tidak ada project yang tersedia untuk tier ini."] };
+    const developmentReasons = [...developmentEligibility.reasons];
+    if (!chiefEngineer) developmentReasons.unshift("Tim belum memiliki Chief Engineer.");
+    if (developmentSize === "major" && numberField(team, "rnd_level", 1) < 6) developmentReasons.push("Major project membutuhkan R&D Department minimal level 6.");
+    if (numberField(team, "cash") < 0) developmentReasons.push("Development tidak bisa dimulai saat saldo tim negatif.");
+    if (dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length >= Math.ceil(numberField(team, "rnd_level", 1) / 2)) {
+      developmentReasons.push("Semua slot development sedang terpakai.");
+    }
     const tabs: { id: Tab; label: string }[] = [
       { id: "overview", label: "Overview" }, { id: "calendar", label: "Calendar" }, { id: "roster", label: "Drivers" },
-      { id: "staff", label: "Staff" }, { id: "sponsors", label: "Sponsors" }, { id: "finance", label: "Finance" }, { id: "standings", label: "Standings" },
+      { id: "staff", label: "Staff" }, { id: "development", label: "Development" }, { id: "sponsors", label: "Sponsors" }, { id: "finance", label: "Finance" }, { id: "standings", label: "Standings" },
     ];
     return <main className="career-mode-root">
       <header className="career-header">
@@ -483,13 +551,53 @@ export default function CareerMode() {
         <article className="career-panel"><small>CAR DEVELOPMENT</small><h2>Season 1</h2><p className="muted-text">Riset, facility upgrades, dan kontrak akan dibuka setelah sistem season dan ekonomi lengkap.</p></article>
         {lastRace && <>
           <article className="career-panel wide-panel"><small>QUALIFYING CLASSIFICATION</small><h2>Starting grid</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>GRID</th><th>DRIVER</th><th>BEST LAP</th></tr></thead><tbody>{[...lastRace.qualifying.classification].sort((a,b)=>a.gridPosition-b.gridPosition).map((row) => <tr key={row.driverId}><td>{row.gridPosition}</td><td>{row.driverName}</td><td>{row.bestLapSeconds.toFixed(3)}s</td></tr>)}</tbody></table></div></article>
-          {lastRace.sprint && <article className="career-panel wide-panel"><small>SPRINT CLASSIFICATION · {lastRace.sprintLaps} LAPS</small><h2>Sprint result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.sprint.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{SPRINT_POINTS[row.position] ?? 0}</td></tr>)}</tbody></table></div></article>}
-          <article className="career-panel wide-panel"><small>RACE CLASSIFICATION</small><h2>Race result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.race.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{POINTS[row.position] ?? 0}</td></tr>)}</tbody></table></div></article>
+          {lastRace.sprint && <article className="career-panel wide-panel"><small>SPRINT CLASSIFICATION · {lastRace.sprintLaps} LAPS</small><h2>Sprint result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.sprint.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{calculateSprintRacePoints(row.position)}</td></tr>)}</tbody></table></div></article>}
+          <article className="career-panel wide-panel"><small>RACE CLASSIFICATION</small><h2>Race result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.race.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{calculateMainRacePoints(activeSave.tier, row.position, lastRace.fastestLapDriverIds.includes(row.driverId))}</td></tr>)}</tbody></table></div></article>
         </>}
       </section>}
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
       {tab === "roster" && <section className="career-panel"><div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
+      {tab === "development" && <section className="career-grid">
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>R&D / CAR DEVELOPMENT</small><h2>Build the next upgrade</h2></div><span>{dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length}/{Math.ceil(numberField(team, "rnd_level", 1) / 2)} active slots</span></div>
+          <p className="muted-text">Success chance is fixed at 70%. Failed projects keep the old part and do not refund their cost. Facility level reduces duration and narrows variance.</p>
+          <div className="form-grid development-form">
+            <label>Project<select value={selectedDevelopment?.id ?? ""} onChange={(event) => {
+              const project = developmentOptions.find((item) => item.id === event.target.value);
+              if (!project) return;
+              setDevelopmentProjectId(project.id);
+              if (!project.availableSizes.includes(developmentSize)) setDevelopmentSize(project.availableSizes[0]!);
+              setDevelopmentError("");
+            }}>{developmentOptions.map((project) => <option key={project.id} value={project.id}>{project.id} · {getDevelopmentProjectName(project.id, activeSave.tier) ?? project.name}</option>)}</select></label>
+            <label>Project size<select value={developmentSize} onChange={(event) => setDevelopmentSize(event.target.value as DevelopmentProjectSize)}>{(selectedDevelopment?.availableSizes ?? []).map((size) => <option key={size} value={size}>{size.charAt(0).toUpperCase() + size.slice(1)}</option>)}</select></label>
+          </div>
+          {selectedDevelopment && <div className="development-preview">
+            <div><span>CATEGORY</span><b>{selectedDevelopment.category.toUpperCase()}</b></div>
+            <div><span>MAIN ATTRIBUTE</span><b>{selectedDevelopment.mainAttribute}</b></div>
+            <div><span>SECONDARY</span><b>{selectedDevelopment.secondaryAttributes.join(", ") || "None"}</b></div>
+            <div><span>SUCCESS CHANCE</span><b>70%</b></div>
+            <div><span>PROJECT COST</span><b>{formatCash(calculateDevelopmentProjectCost(activeSave.tier, developmentSize))}</b></div>
+            <div><span>EFFECTIVE DURATION</span><b>{calculateEffectiveDevelopmentDuration(developmentSize, selectedFacilityLevel).toFixed(2)} races</b></div>
+          </div>}
+          {developmentReasons.length > 0 && <div className="development-reasons"><strong>Cannot start yet</strong><ul>{[...new Set(developmentReasons)].map((reason) => <li key={reason}>{reason}</li>)}</ul></div>}
+          {developmentError && <p className="inline-error">{developmentError}</p>}
+          <button className="primary-button" disabled={developmentBusy || !selectedDevelopment || developmentReasons.length > 0} onClick={() => void startDevelopment()}>{developmentBusy ? "Processing…" : "Start development project →"}</button>
+        </article>
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>ACTIVE PROGRAMMES</small><h2>Projects in progress</h2></div><span>{dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length} active</span></div>
+          {dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length ? <div className="development-project-list">{dashboard.developmentProjects.filter((project) => field(project, "status") === "active").map((project) => {
+            const progress = numberField(project, "progress_races");
+            const duration = numberField(project, "duration_races", 1);
+            const pct = Math.min(100, Math.round(progress / duration * 100));
+            return <div className="development-project-card" key={field(project, "project_instance_id")}><div className="development-project-head"><div><strong>{field(project, "project_name")}</strong><span>{field(project, "project_catalog_id")} · {field(project, "size")} · {formatCash(numberField(project, "cost"))}</span></div><button className="mini-action" disabled={developmentBusy} onClick={() => void cancelDevelopment(field(project, "project_instance_id"))}>Cancel</button></div><div className="development-progress"><span style={{ width: pct + "%" }} /></div><small>{progress.toFixed(0)} / {duration.toFixed(2)} race progress · {pct}%</small></div>;
+          })}</div> : <p className="muted-text">Belum ada project aktif. Pilih upgrade yang memenuhi syarat di atas untuk memulai.</p>}
+        </article>
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>DEVELOPMENT HISTORY</small><h2>Completed and cancelled</h2></div><span>{dashboard.developmentHistory.length} records</span></div>
+          {dashboard.developmentHistory.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>PROJECT</th><th>SIZE</th><th>STATUS</th><th>RESULT / REASON</th><th>COST</th><th>REFUND</th></tr></thead><tbody>{dashboard.developmentHistory.map((item) => <tr key={field(item, "history_id")}><td>{field(item, "season")} · {field(item, "round")}</td><td>{field(item, "project_name")}</td><td>{field(item, "size")}</td><td>{field(item, "status")}</td><td>{field(item, "success") === "1" || numberField(item, "success", -1) === 1 ? "Success" : field(item, "success") === "0" || numberField(item, "success", -1) === 0 ? field(item, "reason", "Failed") : field(item, "reason", "Cancelled")}</td><td>{formatCash(numberField(item, "cost"))}</td><td>{formatCash(numberField(item, "refund"))}</td></tr>)}</tbody></table></div> : <p className="muted-text">Riwayat project akan tercatat setelah project selesai atau dibatalkan.</p>}
+        </article>
+      </section>}
       {tab === "sponsors" && <section className="career-panel"><div className="panel-title"><div><small>COMMERCIAL</small><h2>Sponsor offers</h2></div><span>{dashboard.sponsors.length} offers</span></div>{error && <p className="inline-error">{error}</p>}{dashboard.sponsors.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>SPONSOR</th><th>TIER</th><th>FOCUS</th><th>VALUE</th><th>DURATION</th><th>STATUS / ACTION</th></tr></thead><tbody>{dashboard.sponsors.map((sponsor) => <tr key={field(sponsor, "offer_id")}><td>{field(sponsor, "name")}<small>{field(sponsor, "category")}</small></td><td>T{field(sponsor, "tier")}</td><td>{field(sponsor, "focus")}</td><td>{formatCash(numberField(sponsor, "contract_value"))}</td><td>{field(sponsor, "duration_seasons")} seasons</td><td>{field(sponsor, "status") === "offered" ? <div className="sponsor-actions"><button className="mini-action accept" onClick={() => void decideSponsorOffer(field(sponsor, "offer_id"), true)}>Accept</button><button className="mini-action" onClick={() => void decideSponsorOffer(field(sponsor, "offer_id"), false)}>Decline</button></div> : <span className={field(sponsor, "status") === "accepted" ? "status-chip complete" : "status-chip"}>{field(sponsor, "status")}</span>}</td></tr>)}</tbody></table></div> : <p className="muted-text">Belum ada sponsor yang memenuhi syarat untuk tier ini.</p>}</section>}
       {tab === "finance" && <section className="career-grid"><article className="career-panel"><small>TEAM CASH</small><div className="big-number">{formatCash(numberField(team, "cash"))}</div><p>Starting balance</p></article><article className="career-panel"><small>DEBT</small><div className="big-number">{formatCash(numberField(team, "debt"))}</div><p>Interest rate 8% per season</p></article><article className="career-panel"><small>REQUIRED BUDGET</small><div className="big-number">{formatCash(numberField(team, "budget"))}</div><p>Budget reference for this tier</p></article><article className="career-panel wide-panel"><small>LEDGER</small><h2>Finance transactions</h2><p className="muted-text">{dashboard.finance.length ? "Transactions" : "Belum ada transaksi. Ledger akan terisi ketika ekonomi race mulai diproses."}</p>{dashboard.finance.length > 0 && <div className="table-scroll"><table className="career-table"><thead><tr><th>TYPE</th><th>CATEGORY</th><th>AMOUNT</th><th>BALANCE</th></tr></thead><tbody>{dashboard.finance.map((item, index) => <tr key={field(item, "transaction_id", String(index))}><td>{field(item, "type")}</td><td>{field(item, "category")}</td><td>{formatCash(numberField(item, "amount"))}</td><td>{formatCash(numberField(item, "balance_after"))}</td></tr>)}</tbody></table></div>}</article></section>}
       {tab === "standings" && <section className="career-panel"><div className="panel-title"><div><small>CHAMPIONSHIP</small><h2>Standings</h2></div></div>{dashboard.standings.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER / TEAM</th><th>POINTS</th><th>WINS</th><th>PODIUMS</th></tr></thead><tbody>{dashboard.standings.map((standing, index) => <tr key={field(standing, "driver_id", field(standing, "team_id", String(index)))}><td>{index + 1}</td><td>{field(standing, "driver_name", field(standing, "team_name"))}</td><td>{numberField(standing, "points")}</td><td>{numberField(standing, "wins")}</td><td>{numberField(standing, "podiums")}</td></tr>)}</tbody></table></div> : <p className="muted-text">Belum ada hasil balapan.</p>}</section>}
