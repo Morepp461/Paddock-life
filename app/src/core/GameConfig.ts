@@ -1,0 +1,108 @@
+/**
+ * Canonical values transcribed from the final project documents.
+ * Sources: 01_Division_Ruleset_v1, 02_Simulation_Rules_Addendum_v1,
+ * and 06_Economy_Spec_v1. Do not tune these values without simulation review.
+ */
+export type TierId = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface TierConfig {
+  readonly id: TierId;
+  readonly name: string;
+  readonly paceFactor: number;
+  readonly raceDistanceFactor: number;
+  readonly requiredBudget: number;
+  readonly referenceDriverOverall: number;
+  readonly referenceCarScore: number;
+  readonly driverAge: { readonly min: number; readonly max: number };
+  readonly features: {
+    readonly aero: boolean;
+    readonly drs: boolean;
+    readonly pitStopAllowed: boolean;
+    readonly scheduledPitStop: boolean;
+    readonly emergencyPitStop: boolean;
+    readonly visibleInCareerDivisionPicker: boolean;
+  };
+}
+
+export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
+  1: {
+    id: 1, name: "Caleris World Championship", paceFactor: 1.0, raceDistanceFactor: 1.0,
+    requiredBudget: 248_000_000, referenceDriverOverall: 76, referenceCarScore: 74,
+    driverAge: { min: 18, max: 45 },
+    features: { aero: true, drs: true, pitStopAllowed: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+  },
+  2: {
+    id: 2, name: "Elite Series", paceFactor: 0.96, raceDistanceFactor: 0.85,
+    requiredBudget: 98_000_000, referenceDriverOverall: 68, referenceCarScore: 66,
+    driverAge: { min: 17, max: 25 },
+    features: { aero: true, drs: true, pitStopAllowed: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+  },
+  3: {
+    id: 3, name: "Rising Series", paceFactor: 0.90, raceDistanceFactor: 0.70,
+    requiredBudget: 38_000_000, referenceDriverOverall: 60, referenceCarScore: 58,
+    driverAge: { min: 16, max: 19 },
+    features: { aero: true, drs: true, pitStopAllowed: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+  },
+  4: {
+    id: 4, name: "Challenger Series", paceFactor: 0.84, raceDistanceFactor: 0.55,
+    requiredBudget: 15_000_000, referenceDriverOverall: 52, referenceCarScore: 50,
+    driverAge: { min: 15, max: 18 },
+    features: { aero: true, drs: false, pitStopAllowed: true, scheduledPitStop: false, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+  },
+  5: {
+    id: 5, name: "Rookie Kart Series", paceFactor: 0.70, raceDistanceFactor: 0.40,
+    requiredBudget: 6_000_000, referenceDriverOverall: 40, referenceCarScore: 38,
+    driverAge: { min: 10, max: 14 },
+    features: { aero: false, drs: false, pitStopAllowed: true, scheduledPitStop: false, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+  },
+  6: {
+    id: 6, name: "Regional Karting League", paceFactor: 0.60, raceDistanceFactor: 0.20,
+    requiredBudget: 3_000_000, referenceDriverOverall: 32, referenceCarScore: 30,
+    driverAge: { min: 8, max: 11 },
+    features: { aero: false, drs: false, pitStopAllowed: false, scheduledPitStop: false, emergencyPitStop: false, visibleInCareerDivisionPicker: false },
+  },
+} as const;
+
+export const SIMULATION_CONFIG = {
+  minimumRaceLaps: 8,
+  referenceLapSeconds: 90,
+  carDeltaSecondsPerPoint: 0.045,
+  driverDeltaSecondsPerPoint: 0.030,
+  setupDeltaSecondsPerPoint: 0.040,
+} as const;
+
+export function calculateBaseLapSeconds(estimatedCircuitLapSeconds: number, tier: TierId): number {
+  if (!Number.isFinite(estimatedCircuitLapSeconds) || estimatedCircuitLapSeconds <= 0) {
+    throw new RangeError("Estimasi waktu lap sirkuit harus berupa angka positif yang valid.");
+  }
+  return estimatedCircuitLapSeconds / TIER_CONFIG[tier].paceFactor;
+}
+
+export interface LapPerformanceScores {
+  readonly carScore: number;
+  readonly driverScore: number;
+  readonly setupScore: number;
+}
+
+export interface LapReferenceScores {
+  readonly carScore: number;
+  readonly driverScore: number;
+  readonly setupScore: number;
+}
+
+/** Document 02: score deltas are scaled by estimated lap duration / 90 seconds. */
+export function calculatePerformanceDeltaSeconds(
+  estimatedCircuitLapSeconds: number,
+  scores: LapPerformanceScores,
+  references: LapReferenceScores,
+): number {
+  if (!Number.isFinite(estimatedCircuitLapSeconds) || estimatedCircuitLapSeconds <= 0) {
+    throw new RangeError("Estimasi waktu lap sirkuit harus berupa angka positif yang valid.");
+  }
+  const scale = estimatedCircuitLapSeconds / SIMULATION_CONFIG.referenceLapSeconds;
+  return (
+    (references.carScore - scores.carScore) * SIMULATION_CONFIG.carDeltaSecondsPerPoint +
+    (references.driverScore - scores.driverScore) * SIMULATION_CONFIG.driverDeltaSecondsPerPoint +
+    (references.setupScore - scores.setupScore) * SIMULATION_CONFIG.setupDeltaSecondsPerPoint
+  ) * scale;
+}
