@@ -478,6 +478,24 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_development_history_team ON development_history(career_id, team_id, season, round);
     `,
   },
+  {
+    version: 8,
+    description: "persist driver negotiation cooldowns after rejected offers",
+    sql: `
+      CREATE TABLE driver_negotiation_cooldowns (
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        last_score REAL NOT NULL,
+        until_season INTEGER NOT NULL CHECK (until_season >= 1),
+        until_race INTEGER NOT NULL CHECK (until_race >= 1),
+        rejection_reason TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (career_id, driver_id, team_id)
+      );
+      CREATE INDEX idx_driver_negotiation_cooldown ON driver_negotiation_cooldowns(career_id, team_id, until_season, until_race);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
