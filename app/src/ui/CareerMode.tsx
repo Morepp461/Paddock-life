@@ -340,6 +340,10 @@ export default function CareerMode() {
   const [marketDuration, setMarketDuration] = useState("2");
   const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
   const [marketBonus, setMarketBonus] = useState("0");
+  const [marketWinBonus, setMarketWinBonus] = useState("0");
+  const [marketPodiumBonus, setMarketPodiumBonus] = useState("0");
+  const [marketChampionshipBonus, setMarketChampionshipBonus] = useState("0");
+  const [marketReleaseClause, setMarketReleaseClause] = useState("0");
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketError, setMarketError] = useState("");
   const [marketResult, setMarketResult] = useState<ContractOfferResult | null>(null);
@@ -569,6 +573,10 @@ export default function CareerMode() {
         durationSeasons: Number(marketDuration),
         offeredSalary: Number(marketSalary),
         signingBonus: Number(marketBonus),
+        winBonus: Number(marketWinBonus),
+        podiumBonus: Number(marketPodiumBonus),
+        championshipBonus: Number(marketChampionshipBonus),
+        releaseClause: Number(marketReleaseClause),
         role: marketRole,
       });
       setMarketResult(result);
@@ -702,6 +710,10 @@ export default function CareerMode() {
               }).map((length) => <option key={length} value={String(length)}>{length} season{length > 1 ? "s" : ""}</option>)}</select></label>
               <label>Race role<select value={marketRole} onChange={(event) => setMarketRole(event.target.value as "lead" | "second")}><option value="lead">Lead driver</option><option value="second">Second driver</option></select></label>
               <label>Signing bonus (¢p)<input type="number" min="0" step="1" required value={marketBonus} onChange={(event) => setMarketBonus(event.target.value)} /></label>
+              <label>Win bonus (¢p)<input type="number" min="0" step="1" required value={marketWinBonus} onChange={(event) => setMarketWinBonus(event.target.value)} /></label>
+              <label>Podium bonus (¢p)<input type="number" min="0" step="1" required value={marketPodiumBonus} onChange={(event) => setMarketPodiumBonus(event.target.value)} /></label>
+              <label>Championship bonus (¢p)<input type="number" min="0" step="1" required value={marketChampionshipBonus} onChange={(event) => setMarketChampionshipBonus(event.target.value)} /></label>
+              <label>Release clause (¢p)<input type="number" min="0" step="1" value={marketReleaseClause} onChange={(event) => setMarketReleaseClause(event.target.value)} /><small>0 = no clause; otherwise 1.5–3× annual salary.</small></label>
             </div>
             <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
           </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
