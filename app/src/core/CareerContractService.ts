@@ -138,6 +138,19 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
     if (!Number.isFinite(value) || value < 0) throw new RangeError(name + " tidak boleh negatif.");
   }
   if (input.offeredSalary <= 0) throw new RangeError("Gaji tahunan harus lebih besar dari nol.");
+  const signingBonus = input.signingBonus ?? 0;
+  if (signingBonus > 0 && (signingBonus < input.offeredSalary * 0.1 || signingBonus > input.offeredSalary * 0.25)) {
+    throw new RangeError("Signing bonus harus 10–25% gaji tahunan, atau 0 jika tidak digunakan.");
+  }
+  for (const [name, amount, rate] of [
+    ["Win bonus", input.winBonus ?? 0, 0.02],
+    ["Podium bonus", input.podiumBonus ?? 0, 0.01],
+    ["Championship bonus", input.championshipBonus ?? 0, 0.08],
+  ] as const) {
+    if (amount > 0 && amount !== Math.round(input.offeredSalary * rate)) {
+      throw new RangeError(name + " harus mengikuti persentase gaji tahunan yang ditentukan.");
+    }
+  }
   const releaseClause = input.releaseClause ?? 0;
   if (releaseClause > 0 && (releaseClause < input.offeredSalary * 1.5 || releaseClause > input.offeredSalary * 3)) {
     throw new RangeError("Release clause harus 1,5–3 kali gaji tahunan, atau 0 jika tanpa klausul.");
