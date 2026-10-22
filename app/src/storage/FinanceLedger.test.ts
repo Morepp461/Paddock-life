@@ -25,6 +25,12 @@ describe("finance ledger", () => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       ["team-ledger", "career-ledger", "T5", "Ledger Racing", "Indonesia", "generated", 1, "C", "C", "C", "Conservative", 100, 6_000_000],
     );
+    await database.run(
+      `INSERT INTO teams
+        (team_id, career_id, division_id, name, base_country, origin, founded_season, strength_grade, finance_grade, performance_grade, personality, cash, budget)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      ["team-kart", "career-ledger", "T6", "Kart Team", "Indonesia", "generated", 1, "D", "D", "D", "Conservative", 100, 3_000_000],
+    );
   });
 
   afterAll(async () => {
@@ -64,6 +70,15 @@ describe("finance ledger", () => {
       transactionId: "tx-4", teamId: "team-ledger", season: 1, type: "expense", category: "too-large", amount: -1_000_000,
     })).rejects.toThrow("batas overdraft");
     expect(await database.query("SELECT COUNT(*) AS count FROM finances WHERE transaction_id = ?;", ["tx-4"])).toEqual([{ count: 0 }]);
+  });
+
+  it("applies Tier 6 transactions using the RB-scaled overdraft limit", async () => {
+    const result = await applyFinanceTransaction(database, {
+      transactionId: "tx-kart", teamId: "team-kart", season: 1, type: "expense", category: "repair", amount: -200,
+    });
+    expect(result.balanceAfter).toBe(-100);
+    expect(result.withinOverdraft).toBe(true);
+    expect(result.canRecruitOrDevelop).toBe(false);
   });
 
   it("rejects invalid transaction metadata and unknown teams", async () => {
