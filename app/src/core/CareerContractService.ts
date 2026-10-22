@@ -176,9 +176,9 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
         );
       }
       await database.run(
-        "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0);",
+        "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?);",
         [contractId, input.driverId, input.teamId, input.startSeason, endSeason, input.offeredSalary, signingBonus,
-          input.winBonus ?? 0, input.podiumBonus ?? 0, input.championshipBonus ?? 0, input.releaseClause ?? null],
+          input.winBonus ?? 0, input.podiumBonus ?? 0, input.championshipBonus ?? 0, input.releaseClause ?? null, input.role],
       );
       await database.run("UPDATE drivers SET is_academy_driver = 0 WHERE driver_id = ? AND career_id = ?;", [input.driverId, input.careerId]);
       await database.run("DELETE FROM driver_negotiation_cooldowns WHERE career_id = ? AND driver_id = ? AND team_id = ?;", [input.careerId, input.driverId, input.teamId]);
