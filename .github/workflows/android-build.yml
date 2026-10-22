@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     branches: ["chore/android-build-smoke"]
+  pull_request:
+    branches: [main]
 jobs:
   build:
     runs-on: ubuntu-latest
