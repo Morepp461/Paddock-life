@@ -4,6 +4,7 @@ import { SeededRandom } from "../core/SeededRandom";
 import { hashSeed, sampleBoundedNormal as sampleDelta } from "../core/RandomDistributions";
 import { generateSeasonCalendar } from "../core/SeasonCalendar";
 import { selectSponsorTier } from "../core/SponsorEngine";
+import { calculateEntryFee } from "../core/EconomyEngine";
 import { validateCareerSetupDraft, type CareerSetupDraft, type ValidatedCareerSetup, type CareerTeamCandidate } from "../core/CareerSetupEngine";
 import { generateName, normalizeFullName, type CountryNameProfile, type NameCulture, type NamePool } from "./NameGenerator";
 import { seedStaticWorldDataFromPublic } from "./WorldSeeder";
@@ -246,7 +247,9 @@ export async function generateCareerWorld(
       const strengthGrade = playerNew ? "C" : gradeForStrength(source.strength_class);
       const financeMultiplier = FINANCE_GRADE_MULTIPLIERS[financeGrade];
       const baseCash = config.requiredBudget * financeMultiplier * (0.85 + rng.next() * 0.30);
-      const cash = Math.round(baseCash * (isPlayer ? difficulty.initialCash : 1));
+      const grossCash = Math.round(baseCash * (isPlayer ? difficulty.initialCash : 1));
+      const entryFee = calculateEntryFee(tier);
+      const cash = grossCash - entryFee;
       const debtRate = financeGrade === "A" ? 0 : financeGrade === "B" ? rng.next() * 0.05 : financeGrade === "C" ? rng.next() * 0.15 : 0.10 + rng.next() * 0.20;
       const debt = Math.round(config.requiredBudget * debtRate);
       const facilityBase = distribution.facilityLevelByFinance[financeGrade];
@@ -267,6 +270,14 @@ export async function generateCareerWorld(
           strengthGrade, financeGrade, performanceGrade, source.personality, rep, cash, debt, config.requiredBudget,
           facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel,
           clamp(distribution.reliabilityMean + PERFORMANCE_GRADE_OFFSETS[performanceGrade].reliability, 0, 100)],
+      );
+      await database.run(
+        "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, 1, NULL, 'opening', 'starting-cash', ?, ?);",
+        [stableId(seed, "opening-balance", source.pool_team_id), teamId, grossCash, grossCash],
+      );
+      await database.run(
+        "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, 1, NULL, 'expense', 'division-entry-fee', ?, ?);",
+        [stableId(seed, "entry-fee", source.pool_team_id), teamId, -entryFee, cash],
       );
       const carBase = distribution.carReference + PERFORMANCE_GRADE_OFFSETS[performanceGrade].car;
       await database.run(

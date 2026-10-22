@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { simulateRace, type RaceResult } from "../core/RaceEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
+import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
 import type { NamePoolPayload } from "../seed/NamePoolLoader";
@@ -185,6 +186,33 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         );
       }
     }
+    const teamRows = await database.query(
+      "SELECT team_id, cash FROM teams WHERE career_id = ? AND division_id = ? AND is_active = 1 ORDER BY team_id;",
+      [careerId, "T" + tier],
+    );
+    const rounds = TIER_CONFIG[tier].roundsPerSeason;
+    const raceCosts = [
+      { category: "operating-cost", amount: -calculateOperatingCostPerRound(tier) },
+      { category: "driver-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageDriverPayroll(tier) / rounds) },
+      { category: "staff-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageStaffPayroll(tier) / rounds) },
+    ];
+    for (const teamRow of teamRows) {
+      let balance = Number(teamRow.cash);
+      for (const cost of raceCosts) {
+        if (cost.amount === 0) continue;
+        const next = calculateBalanceAfterTransaction({ currentBalance: balance, amount: cost.amount, tier });
+        if (!next.withinOverdraft) {
+          throw new Error("Race dibatalkan: tim " + String(teamRow.team_id) + " akan melewati batas overdraft setelah " + cost.category + ".");
+        }
+        balance = next.balanceAfter;
+        const transactionId = String(race.race_id) + "_" + cost.category + "_" + String(teamRow.team_id);
+        await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [balance, String(teamRow.team_id)]);
+        await database.run(
+          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, 1, ?, 'expense', ?, ?, ?);",
+          [transactionId, String(teamRow.team_id), Number(race.round), cost.category, cost.amount, balance],
+        );
+      }
+    }
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
     await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
@@ -307,6 +335,34 @@ export default function CareerMode() {
     } finally { setCreating(false); }
   }
 
+  async function decideSponsorOffer(offerId: string, accept: boolean) {
+    if (!database || !activeSave) return;
+    setError("");
+    try {
+      await database.transaction(async () => {
+        const rows = await database.query(
+          "SELECT * FROM sponsor_offers WHERE offer_id = ? AND career_id = ? AND team_id = ?;",
+          [offerId, activeSave.careerId, String(dashboard?.team.team_id)],
+        );
+        const offer = rows[0];
+        if (!offer || field(offer, "status") !== "offered") throw new Error("Penawaran sponsor sudah diproses atau tidak tersedia.");
+        if (accept) {
+          await database.run(
+            "INSERT INTO team_sponsors (team_sponsor_id, team_id, sponsor_id, start_season, end_season, contract_value, focus, is_active) VALUES (?, ?, ?, 1, ?, ?, ?, 1);",
+            ["contract_" + offerId, String(offer.team_id), String(offer.sponsor_id), Number(offer.duration_seasons), Number(offer.contract_value), String(offer.focus)],
+          );
+          await database.run("UPDATE sponsor_offers SET status = 'accepted' WHERE offer_id = ? AND status = 'offered';", [offerId]);
+        } else {
+          await database.run("UPDATE sponsor_offers SET status = 'declined' WHERE offer_id = ? AND status = 'offered';", [offerId]);
+        }
+      });
+      const playerTeamId = String(dashboard?.team.team_id ?? "");
+      setDashboard(await loadDashboard(database, activeSave.careerId, playerTeamId, activeSave.tier));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Penawaran sponsor gagal diproses.");
+    }
+  }
+
   async function runNextRace() {
     if (!database || !activeSave) return;
     setRunningRace(true); setRaceError(""); setLastRace(null);
@@ -355,7 +411,7 @@ export default function CareerMode() {
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
       {tab === "roster" && <section className="career-panel"><div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
-      {tab === "sponsors" && <section className="career-panel"><div className="panel-title"><div><small>COMMERCIAL</small><h2>Sponsor offers</h2></div><span>{dashboard.sponsors.length} offers</span></div>{dashboard.sponsors.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>SPONSOR</th><th>TIER</th><th>FOCUS</th><th>VALUE</th><th>DURATION</th></tr></thead><tbody>{dashboard.sponsors.map((sponsor) => <tr key={field(sponsor, "offer_id")}><td>{field(sponsor, "name")}<small>{field(sponsor, "category")}</small></td><td>T{field(sponsor, "tier")}</td><td>{field(sponsor, "focus")}</td><td>{formatCash(numberField(sponsor, "contract_value"))}</td><td>{field(sponsor, "duration_seasons")} seasons</td></tr>)}</tbody></table></div> : <p className="muted-text">Belum ada sponsor yang memenuhi syarat untuk tier ini.</p>}</section>}
+      {tab === "sponsors" && <section className="career-panel"><div className="panel-title"><div><small>COMMERCIAL</small><h2>Sponsor offers</h2></div><span>{dashboard.sponsors.length} offers</span></div>{error && <p className="inline-error">{error}</p>}{dashboard.sponsors.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>SPONSOR</th><th>TIER</th><th>FOCUS</th><th>VALUE</th><th>DURATION</th><th>STATUS / ACTION</th></tr></thead><tbody>{dashboard.sponsors.map((sponsor) => <tr key={field(sponsor, "offer_id")}><td>{field(sponsor, "name")}<small>{field(sponsor, "category")}</small></td><td>T{field(sponsor, "tier")}</td><td>{field(sponsor, "focus")}</td><td>{formatCash(numberField(sponsor, "contract_value"))}</td><td>{field(sponsor, "duration_seasons")} seasons</td><td>{field(sponsor, "status") === "offered" ? <div className="sponsor-actions"><button className="mini-action accept" onClick={() => void decideSponsorOffer(field(sponsor, "offer_id"), true)}>Accept</button><button className="mini-action" onClick={() => void decideSponsorOffer(field(sponsor, "offer_id"), false)}>Decline</button></div> : <span className={field(sponsor, "status") === "accepted" ? "status-chip complete" : "status-chip"}>{field(sponsor, "status")}</span>}</td></tr>)}</tbody></table></div> : <p className="muted-text">Belum ada sponsor yang memenuhi syarat untuk tier ini.</p>}</section>}
       {tab === "finance" && <section className="career-grid"><article className="career-panel"><small>TEAM CASH</small><div className="big-number">{formatCash(numberField(team, "cash"))}</div><p>Starting balance</p></article><article className="career-panel"><small>DEBT</small><div className="big-number">{formatCash(numberField(team, "debt"))}</div><p>Interest rate 8% per season</p></article><article className="career-panel"><small>REQUIRED BUDGET</small><div className="big-number">{formatCash(numberField(team, "budget"))}</div><p>Budget reference for this tier</p></article><article className="career-panel wide-panel"><small>LEDGER</small><h2>Finance transactions</h2><p className="muted-text">{dashboard.finance.length ? "Transactions" : "Belum ada transaksi. Ledger akan terisi ketika ekonomi race mulai diproses."}</p>{dashboard.finance.length > 0 && <div className="table-scroll"><table className="career-table"><thead><tr><th>TYPE</th><th>CATEGORY</th><th>AMOUNT</th><th>BALANCE</th></tr></thead><tbody>{dashboard.finance.map((item, index) => <tr key={field(item, "transaction_id", String(index))}><td>{field(item, "type")}</td><td>{field(item, "category")}</td><td>{formatCash(numberField(item, "amount"))}</td><td>{formatCash(numberField(item, "balance_after"))}</td></tr>)}</tbody></table></div>}</article></section>}
       {tab === "standings" && <section className="career-panel"><div className="panel-title"><div><small>CHAMPIONSHIP</small><h2>Standings</h2></div></div>{dashboard.standings.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER / TEAM</th><th>POINTS</th><th>WINS</th><th>PODIUMS</th></tr></thead><tbody>{dashboard.standings.map((standing, index) => <tr key={field(standing, "driver_id", field(standing, "team_id", String(index)))}><td>{index + 1}</td><td>{field(standing, "driver_name", field(standing, "team_name"))}</td><td>{numberField(standing, "points")}</td><td>{numberField(standing, "wins")}</td><td>{numberField(standing, "podiums")}</td></tr>)}</tbody></table></div> : <p className="muted-text">Belum ada hasil balapan.</p>}</section>}
       <footer className="career-footer"><span>LOCAL-FIRST SAVE · {activeSave.dbName}</span><button className="text-button" onClick={() => setShowQa(true)}>Open Race QA Workbench ↗</button></footer>
