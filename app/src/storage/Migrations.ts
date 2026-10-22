@@ -315,6 +315,97 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_name_pool_lookup ON name_culture_pool(culture_id, gender);
     `,
   },
+  {
+    version: 5,
+    description: "store manager, staff, sponsor, and board-objective career state",
+    sql: `
+      CREATE TABLE career_managers (
+        manager_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT REFERENCES teams(team_id) ON DELETE SET NULL,
+        name TEXT NOT NULL,
+        nationality TEXT NOT NULL,
+        name_culture TEXT NOT NULL,
+        gender TEXT NOT NULL CHECK (gender IN ('male', 'female')),
+        age INTEGER NOT NULL CHECK (age BETWEEN 18 AND 81),
+        reputation INTEGER NOT NULL DEFAULT 0 CHECK (reputation BETWEEN 0 AND 9999),
+        is_player INTEGER NOT NULL DEFAULT 0 CHECK (is_player IN (0, 1)),
+        status TEXT NOT NULL CHECK (status IN ('active', 'free_agent', 'retired')),
+        UNIQUE (career_id, name)
+      );
+
+      CREATE TABLE staff (
+        staff_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT REFERENCES teams(team_id) ON DELETE SET NULL,
+        role TEXT NOT NULL,
+        name TEXT NOT NULL,
+        nationality TEXT NOT NULL,
+        name_culture TEXT NOT NULL,
+        gender TEXT NOT NULL CHECK (gender IN ('male', 'female')),
+        age INTEGER NOT NULL CHECK (age BETWEEN 28 AND 81),
+        skill REAL NOT NULL CHECK (skill BETWEEN 0 AND 100),
+        specialization TEXT NOT NULL,
+        region_assigned TEXT,
+        reputation INTEGER NOT NULL DEFAULT 0 CHECK (reputation BETWEEN 0 AND 9999),
+        salary INTEGER NOT NULL DEFAULT 0 CHECK (salary >= 0),
+        potential REAL NOT NULL CHECK (potential BETWEEN 0 AND 100),
+        contract_end INTEGER,
+        is_free_agent INTEGER NOT NULL DEFAULT 1 CHECK (is_free_agent IN (0, 1)),
+        UNIQUE (career_id, name)
+      );
+      CREATE INDEX idx_staff_career_role ON staff(career_id, role, is_free_agent);
+
+      CREATE TABLE sponsor_pool (
+        sponsor_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL,
+        tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 5),
+        origin TEXT NOT NULL CHECK (origin IN ('Global', 'Indonesia')),
+        base_value INTEGER NOT NULL CHECK (base_value > 0),
+        duration_seasons INTEGER NOT NULL CHECK (duration_seasons BETWEEN 1 AND 5),
+        focus TEXT NOT NULL CHECK (focus IN ('Poin', 'Podium', 'Menang', 'Finish', 'Popularitas')),
+        min_team_reputation INTEGER NOT NULL CHECK (min_team_reputation BETWEEN 0 AND 9999)
+      );
+
+      CREATE TABLE team_sponsors (
+        team_sponsor_id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        sponsor_id TEXT NOT NULL REFERENCES sponsor_pool(sponsor_id),
+        start_season INTEGER NOT NULL CHECK (start_season >= 1),
+        end_season INTEGER NOT NULL CHECK (end_season >= start_season),
+        contract_value INTEGER NOT NULL CHECK (contract_value > 0),
+        focus TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        UNIQUE (team_id, sponsor_id, start_season)
+      );
+
+      CREATE TABLE sponsor_offers (
+        offer_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        sponsor_id TEXT NOT NULL REFERENCES sponsor_pool(sponsor_id),
+        contract_value INTEGER NOT NULL CHECK (contract_value > 0),
+        duration_seasons INTEGER NOT NULL CHECK (duration_seasons BETWEEN 1 AND 5),
+        focus TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('offered', 'accepted', 'declined', 'expired')),
+        created_season INTEGER NOT NULL CHECK (created_season >= 1),
+        UNIQUE (career_id, team_id, sponsor_id)
+      );
+      CREATE INDEX idx_sponsor_offers_team_status ON sponsor_offers(team_id, status);
+
+      CREATE TABLE board_objectives (
+        objective_id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        objective_type TEXT NOT NULL CHECK (objective_type IN ('standings', 'financial', 'unlock_division')),
+        target_value REAL NOT NULL,
+        result TEXT,
+        manager_fired INTEGER NOT NULL DEFAULT 0 CHECK (manager_fired IN (0, 1)),
+        UNIQUE (team_id, season, objective_type)
+      );
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {

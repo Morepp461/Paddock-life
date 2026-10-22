@@ -111,7 +111,7 @@ export const NAME_POOL_PUBLIC_PARTS = [
 ] as const;
 
 /** Decodes the checked-in gzip/base64 payload without adding a runtime dependency. */
-export async function decodeCompressedNamePool(encodedParts: readonly string[]): Promise<unknown> {
+export async function decodeCompressedJson(encodedParts: readonly string[]): Promise<unknown> {
   if (typeof DecompressionStream === "undefined" || typeof atob === "undefined") {
     throw new Error("Perangkat ini tidak mendukung pembukaan seed nama terkompresi.");
   }
@@ -122,6 +122,8 @@ export async function decodeCompressedNamePool(encodedParts: readonly string[]):
   const json = await new Response(stream).text();
   return JSON.parse(json) as unknown;
 }
+
+export const decodeCompressedNamePool = decodeCompressedJson;
 
 export async function loadNamePoolFromPublic(
   database: IDatabase,
