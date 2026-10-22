@@ -112,6 +112,14 @@ export function getDevelopmentProjectName(projectId: string, tier: TierId): stri
   return tier >= 5 && project.kartName ? project.kartName : project.name;
 }
 
+export function getSecondaryReliabilityEffect(projectId: string): "positive" | "negative" | undefined {
+  const project = DEVELOPMENT_CATALOG.find((entry) => entry.id === projectId);
+  if (!project) return undefined;
+  if (project.secondaryAttributes.some((attribute) => attribute.includes("Reliability (+)"))) return "positive";
+  if (project.secondaryAttributes.some((attribute) => attribute.includes("Reliability (-)"))) return "negative";
+  return undefined;
+}
+
 export function validateDevelopmentCatalog(): void {
   if (DEVELOPMENT_CATALOG.length !== 36) throw new Error("Katalog development harus berisi tepat 36 project.");
   const ids = new Set<string>();
