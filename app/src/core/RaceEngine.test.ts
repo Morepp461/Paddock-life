@@ -18,12 +18,12 @@ const raceInput: RaceInput = {
     {
       id: "drv-a", name: "Driver A", carScore: 74, driverScore: 76, setupScore: 50,
       formModifier: 0, aggression: 50, tyreManagement: 50, mechanicalGrip: 50,
-      compound: "medium", tierWearMultiplier: 1,
+      compound: "medium",
     },
     {
       id: "drv-b", name: "Driver B", carScore: 70, driverScore: 72, setupScore: 48,
       formModifier: 0.5, aggression: 60, tyreManagement: 60, mechanicalGrip: 55,
-      compound: "medium", tierWearMultiplier: 1,
+      compound: "medium",
     },
   ],
 };
