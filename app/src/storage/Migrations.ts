@@ -406,6 +406,30 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       );
     `,
   },
+  {
+    version: 6,
+    description: "record idempotent season financial settlements",
+    sql: `
+      CREATE TABLE season_settlements (
+        settlement_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        division_id TEXT NOT NULL REFERENCES divisions(division_id),
+        season INTEGER NOT NULL CHECK (season >= 1),
+        prize_money INTEGER NOT NULL DEFAULT 0,
+        commercial_revenue INTEGER NOT NULL DEFAULT 0,
+        sponsor_revenue INTEGER NOT NULL DEFAULT 0,
+        interest_cost INTEGER NOT NULL DEFAULT 0,
+        facility_maintenance INTEGER NOT NULL DEFAULT 0,
+        net_amount INTEGER NOT NULL,
+        closing_cash INTEGER NOT NULL,
+        settlement_json TEXT NOT NULL,
+        settled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (career_id, season, team_id)
+      );
+      CREATE INDEX idx_season_settlements_career ON season_settlements(career_id, season);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
