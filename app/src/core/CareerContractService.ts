@@ -12,7 +12,7 @@ import {
   type ContractOfferEvaluation,
 } from "./ContractNegotiationEngine";
 
-export type DriverDriverContractOfferInput = {
+export type DriverContractOfferInput = {
   readonly careerId: string;
   readonly teamId: string;
   readonly driverId: string;
@@ -62,7 +62,7 @@ function lowScoreReasons(terms: ContractAcceptanceTerms): string[] {
   ];
   return weighted.sort((a, b) => a.value - b.value).slice(0, 2).map((item) => item.label);
 }
-async function contractContext(database: IDatabase, input: DriverDriverContractOfferInput) {
+async function contractContext(database: IDatabase, input: DriverContractOfferInput) {
   const [careerRows, teamRows, driverRows, cars] = await Promise.all([
     database.query("SELECT world_seed, current_season, current_race FROM career WHERE career_id = ?;", [input.careerId]),
     database.query("SELECT team_id, reputation, cash, division_id, is_active, is_player_team FROM teams WHERE team_id = ? AND career_id = ?;", [input.teamId, input.careerId]),
