@@ -273,6 +273,25 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       ALTER TABLE circuits ADD COLUMN estimated_lap_seconds REAL NOT NULL DEFAULT 0 CHECK (estimated_lap_seconds >= 0);
     `,
   },
+  {
+    version: 3,
+    description: "store immutable source team pool with original strength classes and character",
+    sql: `
+      CREATE TABLE IF NOT EXISTS team_pool (
+        pool_team_id TEXT PRIMARY KEY,
+        tier INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 6),
+        name TEXT NOT NULL UNIQUE,
+        code TEXT NOT NULL UNIQUE,
+        country TEXT NOT NULL,
+        strength_class TEXT NOT NULL CHECK (strength_class IN ('Kuat', 'Menengah', 'Lemah')),
+        finance_grade TEXT NOT NULL CHECK (finance_grade IN ('A', 'B', 'C', 'D')),
+        performance_grade TEXT NOT NULL CHECK (performance_grade IN ('A', 'B', 'C', 'D')),
+        personality TEXT NOT NULL CHECK (personality IN ('Championship', 'Aggressive', 'Conservative', 'Driver Development')),
+        character TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_pool_tier_strength ON team_pool(tier, strength_class);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
