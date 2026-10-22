@@ -25,14 +25,14 @@ The current main branch is an **early playable development build**, not a comple
 - Sponsor offer acceptance/rejection and active sponsor contract persistence.
 - Source-backed economy formulas, opening cash/entry-fee ledger entries, per-round operating/payroll costs, overdraft protection and atomic finance writes.
 - Idempotent season financial settlement for prize money, commercial revenue, achieved sponsor targets, debt interest and facility maintenance.
-- 36 development catalog projects and deterministic development-engine calculations.
+- 36 source-defined development catalog projects, deterministic development calculations, persistent project start/progress/completion/failure/cancellation, finance-ledger integration, and development history. Facility upgrades and broader long-term progression are still incomplete.
 - Local SQLite schema migrations, native Capacitor SQLite adapter and checksum-verified save orchestration interfaces.
 - Race QA workbench for simulation checks.
 
 ### Known gaps before the game can be considered fully testable
 - **Race integration:** the Career Mode race flow still uses simplified dry-track inputs and does not yet fully orchestrate pit stops, incidents, component failures, dynamic weather transitions and safety-car/virtual-safety-car effects into each race result.
 - **Qualifying-to-race behavior:** the qualifying grid is persisted and displayed, but the race kernel still needs source-backed starting-grid integration; no undocumented grid-start time penalty should be added.
-- **Development gameplay:** the 36-project catalog and engine exist, but starting, progressing, completing and cancelling projects are not yet wired into a persistent player-facing workflow.
+- **Development gameplay:** the player-facing project lifecycle is wired and tested, but facility upgrades, broader team development controls and season-to-season development balance still need end-to-end verification.
 - **Season loop:** season settlement is available, but next-season rollover, transfers, contracts, driver/staff progression, retirements and promotion/relegation are not complete.
 - **Save recovery:** save slots can be found and resumed, but the rotating backup/snapshot/restore path needs concrete end-to-end integration and failure-recovery tests.
 - **Roster management:** persistent contract actions, recruitment/release rules and complete team management are still incomplete.
