@@ -709,10 +709,10 @@ export default function CareerMode() {
                 return numberField(candidate, "age") < 18 ? length <= 2 : true;
               }).map((length) => <option key={length} value={String(length)}>{length} season{length > 1 ? "s" : ""}</option>)}</select></label>
               <label>Race role<select value={marketRole} onChange={(event) => setMarketRole(event.target.value as "lead" | "second")}><option value="lead">Lead driver</option><option value="second">Second driver</option></select></label>
-              <label>Signing bonus (¢p)<input type="number" min="0" step="1" required value={marketBonus} onChange={(event) => setMarketBonus(event.target.value)} /></label>
-              <label>Win bonus (¢p)<input type="number" min="0" step="1" required value={marketWinBonus} onChange={(event) => setMarketWinBonus(event.target.value)} /></label>
-              <label>Podium bonus (¢p)<input type="number" min="0" step="1" required value={marketPodiumBonus} onChange={(event) => setMarketPodiumBonus(event.target.value)} /></label>
-              <label>Championship bonus (¢p)<input type="number" min="0" step="1" required value={marketChampionshipBonus} onChange={(event) => setMarketChampionshipBonus(event.target.value)} /></label>
+              <label>Signing bonus (% salary)<input type="number" min="10" max="25" step="1" required value={marketBonus} onChange={(event) => setMarketBonus(event.target.value)} /><small>Source rule: 10–25% of annual salary.</small></label>
+              <label className="contract-bonus-toggle"><input type="checkbox" checked={marketWinBonusEnabled} onChange={(event) => setMarketWinBonusEnabled(event.target.checked)} /> Win bonus · 2% ({formatCash(Math.round(Number(marketSalary || 0) * 0.02))})</label>
+              <label className="contract-bonus-toggle"><input type="checkbox" checked={marketPodiumBonusEnabled} onChange={(event) => setMarketPodiumBonusEnabled(event.target.checked)} /> Podium bonus · 1% ({formatCash(Math.round(Number(marketSalary || 0) * 0.01))})</label>
+              <label className="contract-bonus-toggle"><input type="checkbox" checked={marketChampionshipBonusEnabled} onChange={(event) => setMarketChampionshipBonusEnabled(event.target.checked)} /> Championship bonus · 8% ({formatCash(Math.round(Number(marketSalary || 0) * 0.08))})</label>
               <label>Release clause (¢p)<input type="number" min="0" step="1" value={marketReleaseClause} onChange={(event) => setMarketReleaseClause(event.target.value)} /><small>0 = no clause; otherwise 1.5–3× annual salary.</small></label>
             </div>
             <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
