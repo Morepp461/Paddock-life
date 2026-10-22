@@ -68,7 +68,7 @@ export function getTakeoverCareerTiers(): readonly TierId[] {
 }
 
 function normalizedSet(values: ReadonlySet<string>): Set<string> {
-  return new Set([...values].map(normalizeFullName));
+  return new Set([...values].map(normalizeCareerText));
 }
 
 function validateName(value: string, minimum: number, maximum: number, label: string): string {
