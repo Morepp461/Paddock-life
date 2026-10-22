@@ -17,6 +17,7 @@ export interface TierConfig {
   readonly features: {
     readonly aero: boolean;
     readonly drs: boolean;
+    readonly pitStopAllowed: boolean;
     readonly scheduledPitStop: boolean;
     readonly emergencyPitStop: boolean;
     readonly visibleInCareerDivisionPicker: boolean;
@@ -25,70 +26,40 @@ export interface TierConfig {
 
 export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
   1: {
-    id: 1,
-    name: "Caleris World Championship",
-    paceFactor: 1.0,
-    raceDistanceFactor: 1.0,
-    requiredBudget: 248_000_000,
-    referenceDriverOverall: 76,
-    referenceCarScore: 74,
+    id: 1, name: "Caleris World Championship", paceFactor: 1.0, raceDistanceFactor: 1.0,
+    requiredBudget: 248_000_000, referenceDriverOverall: 76, referenceCarScore: 74,
     driverAge: { min: 18, max: 45 },
-    features: { aero: true, drs: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+    features: { aero: true, drs: true, pitStopAllowed: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
   },
   2: {
-    id: 2,
-    name: "Elite Series",
-    paceFactor: 0.96,
-    raceDistanceFactor: 0.85,
-    requiredBudget: 98_000_000,
-    referenceDriverOverall: 68,
-    referenceCarScore: 66,
+    id: 2, name: "Elite Series", paceFactor: 0.96, raceDistanceFactor: 0.85,
+    requiredBudget: 98_000_000, referenceDriverOverall: 68, referenceCarScore: 66,
     driverAge: { min: 17, max: 25 },
-    features: { aero: true, drs: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+    features: { aero: true, drs: true, pitStopAllowed: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
   },
   3: {
-    id: 3,
-    name: "Rising Series",
-    paceFactor: 0.90,
-    raceDistanceFactor: 0.70,
-    requiredBudget: 38_000_000,
-    referenceDriverOverall: 60,
-    referenceCarScore: 58,
+    id: 3, name: "Rising Series", paceFactor: 0.90, raceDistanceFactor: 0.70,
+    requiredBudget: 38_000_000, referenceDriverOverall: 60, referenceCarScore: 58,
     driverAge: { min: 16, max: 19 },
-    features: { aero: true, drs: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+    features: { aero: true, drs: true, pitStopAllowed: true, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
   },
   4: {
-    id: 4,
-    name: "Challenger Series",
-    paceFactor: 0.84,
-    raceDistanceFactor: 0.55,
-    requiredBudget: 15_000_000,
-    referenceDriverOverall: 52,
-    referenceCarScore: 50,
+    id: 4, name: "Challenger Series", paceFactor: 0.84, raceDistanceFactor: 0.55,
+    requiredBudget: 15_000_000, referenceDriverOverall: 52, referenceCarScore: 50,
     driverAge: { min: 15, max: 18 },
-    features: { aero: true, drs: false, scheduledPitStop: true, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+    features: { aero: true, drs: false, pitStopAllowed: true, scheduledPitStop: false, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
   },
   5: {
-    id: 5,
-    name: "Rookie Kart Series",
-    paceFactor: 0.70,
-    raceDistanceFactor: 0.40,
-    requiredBudget: 6_000_000,
-    referenceDriverOverall: 40,
-    referenceCarScore: 38,
+    id: 5, name: "Rookie Kart Series", paceFactor: 0.70, raceDistanceFactor: 0.40,
+    requiredBudget: 6_000_000, referenceDriverOverall: 40, referenceCarScore: 38,
     driverAge: { min: 10, max: 14 },
-    features: { aero: false, drs: false, scheduledPitStop: false, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
+    features: { aero: false, drs: false, pitStopAllowed: true, scheduledPitStop: false, emergencyPitStop: true, visibleInCareerDivisionPicker: true },
   },
   6: {
-    id: 6,
-    name: "Regional Karting League",
-    paceFactor: 0.60,
-    raceDistanceFactor: 0.20,
-    requiredBudget: 3_000_000,
-    referenceDriverOverall: 32,
-    referenceCarScore: 30,
+    id: 6, name: "Regional Karting League", paceFactor: 0.60, raceDistanceFactor: 0.20,
+    requiredBudget: 3_000_000, referenceDriverOverall: 32, referenceCarScore: 30,
     driverAge: { min: 8, max: 11 },
-    features: { aero: false, drs: false, scheduledPitStop: false, emergencyPitStop: false, visibleInCareerDivisionPicker: false },
+    features: { aero: false, drs: false, pitStopAllowed: false, scheduledPitStop: false, emergencyPitStop: false, visibleInCareerDivisionPicker: false },
   },
 } as const;
 
