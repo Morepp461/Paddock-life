@@ -100,7 +100,15 @@ export function simulateRace(input: RaceInput): RaceResult {
   validateInput(input);
   const tierConfig = TIER_CONFIG[input.tier];
   const fuelFactor = input.tier >= 5 ? 0.4 : 1;
+  const allowedCompounds = input.trackCondition === "dry"
+    ? tierConfig.allowedDryCompounds
+    : input.trackCondition === "damp"
+      ? [...tierConfig.allowedDryCompounds, ...tierConfig.allowedWetCompounds]
+      : tierConfig.allowedWetCompounds;
   const states: MutableDriverState[] = input.drivers.map((driver) => {
+    if (!allowedCompounds.includes(driver.compound as never)) {
+      throw new Error(`Compound ${driver.compound} tidak tersedia untuk Tier ${input.tier} pada kondisi ${input.trackCondition}.`);
+    }
     const compoundResult = getCompoundPaceResult({ compound: driver.compound, trackCondition: input.trackCondition });
     if (!compoundResult.usable) {
       throw new Error(`Compound ${driver.compound} tidak dapat dipakai pada kondisi ${input.trackCondition}.`);
