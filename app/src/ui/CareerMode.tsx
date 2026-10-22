@@ -243,7 +243,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
           weekend.race.totalLaps, fastestLap, compound, points, row.cumulativeTimeSeconds],
       );
-      await upsertDriverStanding(database, tier, String(race.race_id), row.driverId, points,
+      await upsertDriverStanding(database, tier, season, String(race.race_id), row.driverId, points,
         row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap);
     }
     const teamPoints = new Map<string, { points: number; wins: number; podiums: number }>();
@@ -256,7 +256,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       teamPoints.set(teamId, current);
     }
     for (const [teamId, summary] of teamPoints) {
-      await upsertTeamStanding(database, tier, String(race.race_id), teamId, summary.points, summary.wins, summary.podiums);
+      await upsertTeamStanding(database, tier, season, String(race.race_id), teamId, summary.points, summary.wins, summary.podiums);
     }
 
     const teamRows = await database.query(
