@@ -108,7 +108,7 @@ async function insertDriver(
   database: IDatabase, input: {
     seed: string; index: number | string; careerId: string; teamId: string | null; tier: TierId;
     pool: NamePool; rng: SeededRandom; baseCountry: string; existingNames: Set<string>;
-    freeAgent?: boolean;
+    freeAgent?: boolean; academy?: boolean;
   },
 ): Promise<string> {
   const dist = INITIAL_DISTRIBUTIONS[input.tier];
@@ -118,7 +118,9 @@ async function insertDriver(
     existingFullNames: input.existingNames,
   });
   input.existingNames.add(normalizeFullName(generated.fullName));
-  const age = Math.round(sampleNormalBounded(input.rng, dist.driverAgeMean, dist.driverAgeSd, dist.minDriverAge, dist.maxDriverAge));
+  const age = input.academy
+    ? Math.round(sampleNormalBounded(input.rng, Math.min(dist.driverAgeMean, 16), dist.driverAgeSd, 8, 17))
+    : Math.round(sampleNormalBounded(input.rng, dist.driverAgeMean, dist.driverAgeSd, dist.minDriverAge, dist.maxDriverAge));
   const overall = sampleNormalBounded(input.rng, dist.driverOverallMean, dist.driverOverallSd, 1, 99);
   const potentialRoom = age <= 13 ? 20 + input.rng.next() * 20 : age <= 17 ? 12 + input.rng.next() * 16 : age <= 23 ? 6 + input.rng.next() * 10 : age <= 29 ? 2 + input.rng.next() * 6 : input.rng.next() * 3;
   const values = {
@@ -157,11 +159,11 @@ async function insertDriver(
       values.wet_skill, values.tyre_management, values.overtaking, values.defending, values.starts, values.adaptability,
       values.focus, values.pressure, values.morale, values.confidence, values.aggression, values.teamwork, values.potential,
       values.development_rate, values.injury_resistance, values.loyalty, values.ambition, values.fan_popularity, age,
-      generated.countryCode, generated.cultureId, Math.round(overall * 100), marketValue, age <= 17 && input.tier <= 3 ? 1 : 0],
+      generated.countryCode, generated.cultureId, Math.round(overall * 100), marketValue, input.academy ? 1 : 0],
   );
   if (input.teamId) {
     const rb = TIER_CONFIG[input.tier].requiredBudget;
-    const salary = input.tier === 6 ? 0 : Math.round(rb * 0.06);
+    const salary = input.tier === 6 ? 0 : Math.round(rb * (input.academy ? 0.008 : 0.06));
     await database.run(
       "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?);",
       [stableId(input.seed, "contract", input.index), driverId, input.teamId, salary, Math.round(salary * 0.15), Math.round(salary * 0.02), Math.round(salary * 0.01), Math.round(salary * 0.08)],
@@ -283,6 +285,14 @@ export async function generateCareerWorld(
         });
         driverIds.push(id); driversCreated += 1;
       }
+      for (let academyIndex = 0; academyIndex < distribution.academySlots; academyIndex += 1) {
+        const academyDriverId = await insertDriver(database, {
+          seed, index: "team-" + source.pool_team_id + "-academy-" + academyIndex, careerId, teamId, tier,
+          pool, rng, baseCountry: source.country, existingNames, academy: true,
+        });
+        driversCreated += 1;
+        await database.run("UPDATE drivers SET is_academy_driver = 1 WHERE driver_id = ?;", [academyDriverId]);
+      }
       const staffRoles = STAFF_ROLES[tier];
       const staffSlots = distribution.staffSlots;
       for (let staffIndex = 0; staffIndex < staffSlots; staffIndex += 1) {
@@ -403,7 +413,7 @@ export async function generateCareerWorld(
       database.query("SELECT COUNT(*) AS count FROM races WHERE season = 1;"),
       database.query("SELECT COUNT(*) AS count FROM cars WHERE team_id IN (SELECT team_id FROM teams WHERE career_id = ?);", [careerId]),
     ]);
-    if (Number(counts[0]?.[0]?.count ?? 0) !== 72 || Number(counts[1]?.[0]?.count ?? 0) !== 174 ||
+    if (Number(counts[0]?.[0]?.count ?? 0) !== 72 || Number(counts[1]?.[0]?.count ?? 0) !== 270 ||
         Number(counts[2]?.[0]?.count ?? 0) !== racesScheduled || Number(counts[3]?.[0]?.count ?? 0) !== 72) {
       throw new Error("Validasi world generation gagal; seluruh transaksi career dibatalkan.");
     }
