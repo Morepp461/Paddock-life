@@ -28,6 +28,7 @@ export interface RaceWeekendResult {
   readonly sprint: RaceResult | null;
   readonly race: RaceResult;
   readonly sprintLaps: number | null;
+  readonly fastestLapDriverIds: readonly string[];
 }
 
 function sessionCount(tier: TierId): number {
@@ -87,7 +88,10 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
     totalLaps: sprintLaps,
   });
   const race = simulateRace(raceInput);
-  return { qualifying, sprint, race, sprintLaps };
+  const raceLapRows = race.laps.flat();
+  const fastestLapSeconds = Math.min(...raceLapRows.map((lap) => lap.lapTimeSeconds));
+  const fastestLapDriverIds = [...new Set(raceLapRows.filter((lap) => lap.lapTimeSeconds === fastestLapSeconds).map((lap) => lap.driverId))].sort();
+  return { qualifying, sprint, race, sprintLaps, fastestLapDriverIds };
 }
 
 
