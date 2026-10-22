@@ -340,9 +340,9 @@ export default function CareerMode() {
   const [marketDuration, setMarketDuration] = useState("2");
   const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
   const [marketBonus, setMarketBonus] = useState("0");
-  const [marketWinBonus, setMarketWinBonus] = useState("0");
-  const [marketPodiumBonus, setMarketPodiumBonus] = useState("0");
-  const [marketChampionshipBonus, setMarketChampionshipBonus] = useState("0");
+  const [marketWinBonusEnabled, setMarketWinBonusEnabled] = useState(false);
+  const [marketPodiumBonusEnabled, setMarketPodiumBonusEnabled] = useState(false);
+  const [marketChampionshipBonusEnabled, setMarketChampionshipBonusEnabled] = useState(false);
   const [marketReleaseClause, setMarketReleaseClause] = useState("0");
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketError, setMarketError] = useState("");
@@ -572,10 +572,10 @@ export default function CareerMode() {
         startSeason: numberField(dashboard.career, "current_season", 1) + 1,
         durationSeasons: Number(marketDuration),
         offeredSalary: Number(marketSalary),
-        signingBonus: Number(marketBonus),
-        winBonus: Number(marketWinBonus),
-        podiumBonus: Number(marketPodiumBonus),
-        championshipBonus: Number(marketChampionshipBonus),
+        signingBonus: Math.round(Number(marketSalary) * Number(marketBonus) / 100),
+        winBonus: marketWinBonusEnabled ? Math.round(Number(marketSalary) * 0.02) : 0,
+        podiumBonus: marketPodiumBonusEnabled ? Math.round(Number(marketSalary) * 0.01) : 0,
+        championshipBonus: marketChampionshipBonusEnabled ? Math.round(Number(marketSalary) * 0.08) : 0,
         releaseClause: Number(marketReleaseClause),
         role: marketRole,
       });
