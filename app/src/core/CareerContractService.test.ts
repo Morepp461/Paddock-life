@@ -112,4 +112,19 @@ describe("career contract service", () => {
       await database.close();
     }
   });
+  it("enforces the documented release-clause range", async () => {
+    const { database, career, teamId, driver } = await setup();
+    try {
+      for (const releaseClause of [1000, 4000]) {
+        await expect(offerDriverContract(database, {
+          careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+          startSeason: 2, durationSeasons: 1, offeredSalary: 1000,
+          releaseClause, role: "lead",
+        })).rejects.toThrow("Release clause harus 1,5–3 kali gaji");
+      }
+    } finally {
+      await database.close();
+    }
+  });
+
 });
