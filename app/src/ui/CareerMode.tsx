@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { simulateRace, type RaceResult } from "../core/RaceEngine";
+import { type RaceResult } from "../core/RaceEngine";
+import { simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { hashSeed } from "../core/RandomDistributions";
@@ -28,6 +29,7 @@ type Tab = "overview" | "calendar" | "roster" | "staff" | "sponsors" | "finance"
 
 const SAVE_INDEX_KEY = "paddock-life-save-slots-v1";
 const POINTS: Readonly<Record<number, number>> = { 1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 2, 10: 1 };
+const SPRINT_POINTS: Readonly<Record<number, number>> = { 1: 8, 2: 7, 3: 6, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1 };
 const TIER_PICKER = [5, 4, 3, 2, 1] as const;
 
 function readSaveSlots(): SaveSlot[] {
@@ -104,13 +106,55 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
   return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings };
 }
 
-async function simulateNextRace(database: IDatabase, careerId: string, tier: TierId, seed: string): Promise<RaceResult> {
+async function upsertDriverStanding(
+  database: IDatabase, tier: TierId, raceId: string, driverId: string,
+  points: number, wins = 0, podiums = 0, fastestLaps = 0,
+): Promise<void> {
+  const prior = await database.query(
+    "SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND driver_id = ? AND team_id IS NULL;",
+    ["T" + tier, driverId],
+  );
+  if (prior[0]) {
+    await database.run(
+      "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ?, fastest_laps = fastest_laps + ? WHERE standing_id = ?;",
+      [points, wins, podiums, fastestLaps, String(prior[0].standing_id)],
+    );
+  } else {
+    await database.run(
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
+      [raceId + "_drv_" + driverId, "T" + tier, driverId, points, wins, podiums, fastestLaps],
+    );
+  }
+}
+
+async function upsertTeamStanding(
+  database: IDatabase, tier: TierId, raceId: string, teamId: string,
+  points: number, wins = 0, podiums = 0,
+): Promise<void> {
+  const prior = await database.query(
+    "SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND team_id = ? AND driver_id IS NULL;",
+    ["T" + tier, teamId],
+  );
+  if (prior[0]) {
+    await database.run(
+      "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ? WHERE standing_id = ?;",
+      [points, wins, podiums, String(prior[0].standing_id)],
+    );
+  } else {
+    await database.run(
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
+      [raceId + "_team_" + teamId, "T" + tier, teamId, points, wins, podiums],
+    );
+  }
+}
+
+async function simulateNextRace(database: IDatabase, careerId: string, tier: TierId, seed: string): Promise<RaceWeekendResult> {
   const raceRows = await database.query(
-    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = 1 AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
+    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = 1 AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
     ["T" + tier],
   );
   const race = raceRows[0];
-  if (!race) throw new Error("Semua race di season ini sudah selesai. Progres season berikutnya belum diaktifkan.");
+  if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
   const raceDrivers = await database.query(
     `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.aggression,
       t.team_id, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
@@ -125,49 +169,73 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     throw new Error("Grid race harus berisi " + TIER_CONFIG[tier].gridSize + " driver, tetapi ditemukan " + raceDrivers.length + ".");
   }
   const compound = TIER_CONFIG[tier].allowedDryCompounds[0]!;
-  const result = simulateRace({
+  const driverInputs = raceDrivers.map((driver) => ({
+    id: String(driver.driver_id), name: String(driver.name),
+    carScore: ["engine_power", "aero", "high_speed", "medium_speed", "low_speed", "mechanical_grip", "traction", "braking", "car_tyre_management"].reduce((sum, key) => sum + numberField(driver, key), 0) / 9,
+    driverScore: (numberField(driver, "pace") + numberField(driver, "qualifying") + numberField(driver, "racecraft") + numberField(driver, "consistency")) / 4,
+    qualifyingScore: numberField(driver, "qualifying"),
+    setupScore: 50, formModifier: 0, aggression: numberField(driver, "aggression"),
+    tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
+    compound, weatherAdaptation: numberField(driver, "wet_skill"),
+  }));
+  const weekend = simulateRaceWeekend({
     worldSeed: seed, season: 1, round: Number(race.round), tier,
     estimatedCircuitLapSeconds: Number(race.estimated_lap_seconds), totalLaps: Number(race.laps),
     trackAbrasion: Number(race.abrasion), trackTemperatureCelsius: 25,
     trackCondition: "dry", referenceSetupScore: 50,
-    drivers: raceDrivers.map((driver) => ({
-      id: String(driver.driver_id), name: String(driver.name),
-      carScore: ["engine_power", "aero", "high_speed", "medium_speed", "low_speed", "mechanical_grip", "traction", "braking", "car_tyre_management"].reduce((sum, key) => sum + numberField(driver, key), 0) / 9,
-      driverScore: (numberField(driver, "pace") + numberField(driver, "qualifying") + numberField(driver, "racecraft") + numberField(driver, "consistency")) / 4,
-      setupScore: 50, formModifier: 0, aggression: numberField(driver, "aggression"),
-      tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
-      compound, weatherAdaptation: numberField(driver, "wet_skill"),
-    })),
+    hasSprint: Number(race.has_sprint) === 1,
+    drivers: driverInputs,
   });
-  const allLapResults = result.laps.flat();
-  const fastestOverall = Math.min(...allLapResults.map((lap) => lap.lapTimeSeconds));
-  const fastestDrivers = new Set(allLapResults.filter((lap) => lap.lapTimeSeconds === fastestOverall).map((lap) => lap.driverId));
-  const ordered = [...result.classification].sort((a, b) => a.position - b.position);
+  const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));
+  const gridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
+  const raceLaps = weekend.race.laps.flat();
+  const fastestRaceTime = Math.min(...raceLaps.map((lap) => lap.lapTimeSeconds));
+  const fastestRaceDrivers = new Set(raceLaps.filter((lap) => lap.lapTimeSeconds === fastestRaceTime).map((lap) => lap.driverId));
+  const sprintLaps = weekend.sprint?.laps.flat() ?? [];
+  const fastestSprintTime = sprintLaps.length ? Math.min(...sprintLaps.map((lap) => lap.lapTimeSeconds)) : Infinity;
+  const fastestSprintDrivers = new Set(sprintLaps.filter((lap) => lap.lapTimeSeconds === fastestSprintTime).map((lap) => lap.driverId));
+  const orderedRace = [...weekend.race.classification].sort((a, b) => a.position - b.position);
+  const orderedSprint = [...(weekend.sprint?.classification ?? [])].sort((a, b) => a.position - b.position);
+
   await database.transaction(async () => {
-    for (const row of ordered) {
-      const positionPoints = POINTS[row.position] ?? 0;
-      const fastestLap = fastestDrivers.has(row.driverId) ? 1 : 0;
-      await database.run(
-        "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, NULL, ?, ?, ?, 0, ?, ?, 0, ?);",
-        [String(race.race_id), row.driverId, String(raceDrivers.find((driver) => String(driver.driver_id) === row.driverId)?.team_id), row.position, Number(race.laps), fastestLap, compound, positionPoints, row.cumulativeTimeSeconds],
-      );
-      const prior = await database.query("SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND driver_id = ? AND team_id IS NULL;", ["T" + tier, row.driverId]);
-      const existing = prior[0];
-      if (existing) {
+    if (weekend.sprint) {
+      for (const row of orderedSprint) {
+        const teamId = teamByDriver.get(row.driverId);
+        if (!teamId) throw new Error("Tim driver sprint tidak ditemukan.");
+        const points = SPRINT_POINTS[row.position] ?? 0;
         await database.run(
-          "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ?, fastest_laps = fastest_laps + ? WHERE standing_id = ?;",
-          [positionPoints, row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap, String(existing.standing_id)],
+          "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
+          [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
+            weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compound, points, row.cumulativeTimeSeconds],
         );
-      } else {
-        await database.run(
-          "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
-          [String(race.race_id) + "_drv_" + row.driverId, "T" + tier, row.driverId, positionPoints, row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap],
-        );
+        await upsertDriverStanding(database, tier, String(race.race_id) + "_sprint", row.driverId, points);
+      }
+      const sprintTeamPoints = new Map<string, number>();
+      for (const row of orderedSprint) {
+        const teamId = teamByDriver.get(row.driverId)!;
+        sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + (SPRINT_POINTS[row.position] ?? 0));
+      }
+      for (const [teamId, points] of sprintTeamPoints) {
+        await upsertTeamStanding(database, tier, String(race.race_id) + "_sprint", teamId, points);
       }
     }
+
+    for (const row of orderedRace) {
+      const teamId = teamByDriver.get(row.driverId);
+      if (!teamId) throw new Error("Tim driver race tidak ditemukan.");
+      const points = POINTS[row.position] ?? 0;
+      const fastestLap = fastestRaceDrivers.has(row.driverId) ? 1 : 0;
+      await database.run(
+        "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
+        [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
+          weekend.race.totalLaps, fastestLap, compound, points, row.cumulativeTimeSeconds],
+      );
+      await upsertDriverStanding(database, tier, String(race.race_id), row.driverId, points,
+        row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap);
+    }
     const teamPoints = new Map<string, { points: number; wins: number; podiums: number }>();
-    for (const row of ordered) {
-      const teamId = String(raceDrivers.find((driver) => String(driver.driver_id) === row.driverId)?.team_id);
+    for (const row of orderedRace) {
+      const teamId = teamByDriver.get(row.driverId)!;
       const current = teamPoints.get(teamId) ?? { points: 0, wins: 0, podiums: 0 };
       current.points += POINTS[row.position] ?? 0;
       if (row.position === 1) current.wins += 1;
@@ -175,17 +243,9 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       teamPoints.set(teamId, current);
     }
     for (const [teamId, summary] of teamPoints) {
-      const prior = await database.query("SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND team_id = ? AND driver_id IS NULL;", ["T" + tier, teamId]);
-      if (prior[0]) {
-        await database.run("UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ? WHERE standing_id = ?;",
-          [summary.points, summary.wins, summary.podiums, String(prior[0].standing_id)]);
-      } else {
-        await database.run(
-          "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
-          [String(race.race_id) + "_team_" + teamId, "T" + tier, teamId, summary.points, summary.wins, summary.podiums],
-        );
-      }
+      await upsertTeamStanding(database, tier, String(race.race_id), teamId, summary.points, summary.wins, summary.podiums);
     }
+
     const teamRows = await database.query(
       "SELECT team_id, cash FROM teams WHERE career_id = ? AND division_id = ? AND is_active = 1 ORDER BY team_id;",
       [careerId, "T" + tier],
@@ -216,7 +276,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
     await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
-  return result;
+  return weekend;
 }
 
 export default function CareerMode() {
@@ -244,7 +304,7 @@ export default function CareerMode() {
   const [tab, setTab] = useState<Tab>("overview");
   const [runningRace, setRunningRace] = useState(false);
   const [raceError, setRaceError] = useState("");
-  const [lastRace, setLastRace] = useState<RaceResult | null>(null);
+  const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
 
   useEffect(() => {
@@ -406,7 +466,7 @@ export default function CareerMode() {
         </article>
         <article className="career-panel"><small>WORLD STATUS</small><div className="big-number">{dashboard.teams.length}<span>/ 12</span></div><p>Teams in this division</p><div className="stat-line"><span>Drivers in roster</span><b>{dashboard.roster.length}/2</b></div><div className="stat-line"><span>Active sponsor offers</span><b>{dashboard.sponsors.length}</b></div></article>
         <article className="career-panel"><small>CAR DEVELOPMENT</small><h2>Season 1</h2><p className="muted-text">Riset, facility upgrades, dan kontrak akan dibuka setelah sistem season dan ekonomi lengkap.</p></article>
-        {lastRace && <article className="career-panel wide-panel"><small>LAST RACE CLASSIFICATION</small><h2>Race result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{POINTS[row.position] ?? 0}</td></tr>)}</tbody></table></div></article>}
+        {lastRace && <article className="career-panel wide-panel"><small>LAST RACE CLASSIFICATION</small><h2>Race result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.race.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{POINTS[row.position] ?? 0}</td></tr>)}</tbody></table></div></article>}
       </section>}
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
       {tab === "roster" && <section className="career-panel"><div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div></section>}
