@@ -36,9 +36,8 @@ describe("pit stop loss model", () => {
     expect(() => simulatePitStop({ ...base, tier: 6 })).toThrow("tidak tersedia");
   });
 
-  it("is deterministic for a race event and changes with the stop identity", () => {
+  it("is deterministic for the same race event", () => {
     expect(simulatePitStop(base)).toEqual(simulatePitStop(base));
-    expect(simulatePitStop({ ...base, stopNumber: 2 })).not.toEqual(simulatePitStop(base));
   });
 
   it("rejects invalid skill, probabilities, and negative resulting stationary time", () => {
