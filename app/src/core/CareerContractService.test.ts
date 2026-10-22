@@ -91,12 +91,28 @@ describe("career contract service", () => {
     }
   });
 
+  it("validates the documented release-clause range and positive salary", async () => {
+    const { database, career, teamId, driver } = await setup();
+    try {
+      const base = {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: 100_000, role: "lead" as const,
+      };
+      await expect(offerDriverContract(database, { ...base, releaseClause: 100_000 })).rejects.toThrow("1,5–3 kali");
+      await expect(offerDriverContract(database, { ...base, releaseClause: 400_000 })).rejects.toThrow("1,5–3 kali");
+      await expect(offerDriverContract(database, { ...base, offeredSalary: 0 })).rejects.toThrow("lebih besar dari nol");
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE driver_id = ?;", [String(driver.driver_id)])).toEqual([{ count: 0 }]);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("records rejection reasons and blocks same-score re-negotiation for one race", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
       const input = {
         careerId: career.careerId, teamId, driverId: String(driver.driver_id),
-        startSeason: 2, durationSeasons: 1, offeredSalary: 0, role: "second" as const,
+        startSeason: 2, durationSeasons: 1, offeredSalary: 1, role: "second" as const,
       };
       const result = await offerDriverContract(database, input);
       expect(result.decision).toBe("rejected");
