@@ -65,7 +65,7 @@ export async function applyFinanceTransaction(
     );
     if (!rows.length) throw new Error("Tim transaksi tidak ditemukan.");
     const tier = Number(rows[0].tier) as EconomyTierId;
-    if (tier < 1 || tier > 5) throw new Error("Finance rules belum didefinisikan untuk Tier 6.");
+    if (tier < 1 || tier > 6) throw new Error("Tier tim tidak valid untuk transaksi finansial.");
     const balance = calculateBalanceAfterTransaction({
       currentBalance: Number(rows[0].cash), amount: input.amount, tier,
     });
