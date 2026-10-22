@@ -355,14 +355,10 @@ export default function CareerMode() {
         const band = TIER_CONFIG[activeSave.tier].driverAge;
         const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;", [String(dashboard.team.team_id), targetSeason, targetSeason]);
         if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
-          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
+          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
           return;
         }
-        const seatRows = await database.query(
-          "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;",
-          [String(dashboard.team.team_id), season, season],
-        );
-        if (!cancelled) setMarketSeatsAvailable(numberField(seatRows[0], "occupied_seats") < 2);
+        if (!cancelled) setMarketSeatsAvailable(true);
         const rows = await database.query(
           `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
              d.ambition, d.market_value, d.is_academy_driver
