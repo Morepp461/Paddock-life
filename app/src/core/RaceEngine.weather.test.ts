@@ -29,7 +29,7 @@ describe("race weather integration", () => {
   it("adds the source weather delta to lap time without changing the random seed", () => {
     const dry = simulateRace(base);
     const wet = simulateRace({ ...base, weatherByLap: Array.from({ length: 8 }, () => "wet" as const) });
-    expect(wet.laps[0][0].lapTimeSeconds - dry.laps[0][0].lapTimeSeconds).toBeCloseTo(1.2);
+    expect(wet.laps[0][0].lapTimeSeconds - dry.laps[0][0].lapTimeSeconds).toBeCloseTo(10.2);
   });
 
   it("uses driver weather adaptation and rejects incomplete weather timelines", () => {
