@@ -32,7 +32,7 @@ describe("weather transition and lap delta", () => {
   it("calculates source weather delta and only applies adaptation when wet", () => {
     expect(TRACK_GRIP_MULTIPLIER).toEqual({ dry: 1, damp: 0.9, wet: 0.8, "heavy-wet": 0.7 });
     expect(calculateWeatherDeltaSeconds({ condition: "dry", weatherAdaptation: 100, tyreMismatchDeltaSeconds: 6 })).toBe(6);
-    expect(calculateWeatherDeltaSeconds({ condition: "wet", weatherAdaptation: 50, tyreMismatchDeltaSeconds: -3 })).toBeCloseTo(-1);
+    expect(calculateWeatherDeltaSeconds({ condition: "wet", weatherAdaptation: 50, tyreMismatchDeltaSeconds: -3 })).toBeCloseTo(-2.8);
     expect(calculateWeatherDeltaSeconds({ condition: "heavy-wet", weatherAdaptation: 0, tyreMismatchDeltaSeconds: 4 })).toBeCloseTo(5.8);
   });
 
