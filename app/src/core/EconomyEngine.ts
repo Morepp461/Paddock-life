@@ -36,8 +36,14 @@ export function calculateMinimumRAndDBudget(tier: EconomyTierId): number {
   return Math.round(requiredBudget(tier) * 0.15);
 }
 
+/** Per-driver average salary target: 12% of RequiredBudget per season. */
 export function calculateAverageDriverPayroll(tier: EconomyTierId): number {
   return Math.round(requiredBudget(tier) * 0.12);
+}
+
+/** The source economy table budgets two race drivers per team. */
+export function calculateTeamDriverPayroll(tier: EconomyTierId): number {
+  return calculateAverageDriverPayroll(tier) * 2;
 }
 
 export function calculateAverageStaffPayroll(tier: EconomyTierId): number {
