@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { simulateRace, type RaceResult } from "../core/RaceEngine";
-import { TIER_CONFIG, type TierId } from "../core/GameConfig";
+import { calculateRaceLapCount, TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { SeededRandom } from "../core/SeededRandom";
 import { hashSeed } from "../core/RandomDistributions";
 import type { TrackCondition, TyreCompound } from "../core/TyreEngine";
+import { validateCircuitSeed } from "../seed/SeedDataLoader";
 
 const CONDITIONS: readonly TrackCondition[] = ["dry", "damp", "wet", "heavy-wet"];
 const COMPOUNDS: readonly TyreCompound[] = ["soft", "medium", "hard", "intermediate", "wet"];
+
+type TestCircuit = { id: string; name: string; country: string; lengthKm: number; standardLaps: number; estimatedLapSeconds: number; abrasion: number };
 
 function scoreAround(random: SeededRandom, reference: number): number {
   return Math.max(5, Math.min(99, Math.round(reference + (random.next() - 0.5) * 18)));
@@ -39,16 +42,50 @@ function formatTime(seconds: number): string {
 export default function RaceWorkbench() {
   const [tier, setTier] = useState<TierId>(1);
   const [laps, setLaps] = useState(8);
+  const [circuits, setCircuits] = useState<TestCircuit[]>([]);
+  const [circuitId, setCircuitId] = useState("C01");
+  const [loadingCircuits, setLoadingCircuits] = useState(true);
+  const [seedLoadError, setSeedLoadError] = useState("");
   const [seed, setSeed] = useState("paddock-test-001");
   const [condition, setCondition] = useState<TrackCondition>("dry");
   const [compound, setCompound] = useState<TyreCompound>("medium");
-  const [lapSeconds, setLapSeconds] = useState(90);
-  const [abrasion, setAbrasion] = useState(50);
   const [temperature, setTemperature] = useState(25);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [error, setError] = useState("");
   const [selectedLap, setSelectedLap] = useState(8);
   const [runCount, setRunCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCircuits() {
+      try {
+        const response = await fetch("/seed/circuits.json");
+        if (!response.ok) throw new Error("Seed sirkuit tidak bisa dimuat (HTTP " + response.status + ").");
+        const payload: unknown = await response.json();
+        validateCircuitSeed(payload);
+        const loaded = payload.rows.map((row) => ({
+          id: String(row[0]), name: String(row[1]), country: String(row[2]),
+          lengthKm: Number(row[4]), standardLaps: Number(row[5]),
+          estimatedLapSeconds: Number(row[6]), abrasion: Number(row[20]),
+        }));
+        if (!cancelled) { setCircuits(loaded); setSeedLoadError(""); }
+      } catch (caught) {
+        if (!cancelled) setSeedLoadError(caught instanceof Error ? caught.message : "Seed sirkuit gagal dimuat.");
+      } finally {
+        if (!cancelled) setLoadingCircuits(false);
+      }
+    }
+    void loadCircuits();
+    return () => { cancelled = true; };
+  }, []);
+
+  const selectedCircuit = circuits.find((circuit) => circuit.id === circuitId) ?? circuits[0];
+  useEffect(() => {
+    if (!selectedCircuit) return;
+    setCircuitId(selectedCircuit.id);
+    setLaps(calculateRaceLapCount(selectedCircuit.lengthKm, tier));
+    setResult(null);
+  }, [selectedCircuit?.id, tier]);
 
   const drivers = useMemo(() => makeTestDrivers(tier, seed, compound), [tier, seed, compound]);
   const visibleLap = result ? Math.min(selectedLap, result.totalLaps) : 0;
@@ -57,14 +94,15 @@ export default function RaceWorkbench() {
   function runSimulation() {
     try {
       setError("");
+      if (!selectedCircuit) throw new Error("Seed sirkuit belum tersedia.");
       const nextResult = simulateRace({
         worldSeed: seed,
         season: 1,
         round: 1,
         tier,
-        estimatedCircuitLapSeconds: lapSeconds,
+        estimatedCircuitLapSeconds: selectedCircuit?.estimatedLapSeconds ?? 0,
         totalLaps: laps,
-        trackAbrasion: abrasion,
+        trackAbrasion: selectedCircuit?.abrasion ?? 0,
         trackTemperatureCelsius: temperature,
         trackCondition: condition,
         referenceSetupScore: 50,
@@ -90,7 +128,7 @@ export default function RaceWorkbench() {
       <section className="workbench-intro">
         <p className="eyebrow">DEVELOPMENT BUILD · NOT A RELEASE</p>
         <h1>Race <span>Workbench</span></h1>
-        <p>Jalankan simulasi deterministik dari race engine yang sudah ada untuk menguji build di browser atau Android. Data driver di halaman ini adalah fixture QA, bukan roster karier.</p>
+        <p>Jalankan simulasi deterministik dari race engine yang sudah ada menggunakan data sirkuit sumber proyek. Data driver di halaman ini adalah fixture QA, bukan roster karier.</p>
       </section>
 
       <section className="workbench-panel" aria-labelledby="config-title">
@@ -99,6 +137,11 @@ export default function RaceWorkbench() {
           <label>Tier
             <select value={tier} onChange={(event) => { setTier(Number(event.target.value) as TierId); setResult(null); }}>
               {[1, 2, 3, 4].map((value) => <option key={value} value={value}>Tier {value} · {TIER_CONFIG[value as TierId].name}</option>)}
+            </select>
+          </label>
+          <label>Circuit · source seed
+            <select value={selectedCircuit?.id ?? circuitId} onChange={(event) => { setCircuitId(event.target.value); setResult(null); }} disabled={loadingCircuits || circuits.length === 0}>
+              {circuits.map((circuit) => <option key={circuit.id} value={circuit.id}>{circuit.name} · {circuit.country}</option>)}
             </select>
           </label>
           <label>Track condition
@@ -114,12 +157,8 @@ export default function RaceWorkbench() {
           <label>Race laps (min. 8)
             <input type="number" min="8" max="100" step="1" value={laps} onChange={(event) => { setLaps(Number(event.target.value)); setResult(null); }} />
           </label>
-          <label>Estimated lap time (seconds)
-            <input type="number" min="30" max="300" step="0.1" value={lapSeconds} onChange={(event) => { setLapSeconds(Number(event.target.value)); setResult(null); }} />
-          </label>
-          <label>Track abrasion (0–100)
-            <input type="number" min="0" max="100" step="1" value={abrasion} onChange={(event) => { setAbrasion(Number(event.target.value)); setResult(null); }} />
-          </label>
+          <div className="read-only-field"><span>Estimated lap time</span><strong>{selectedCircuit ? selectedCircuit.estimatedLapSeconds.toFixed(1) + " s" : "Loading…"}</strong></div>
+          <div className="read-only-field"><span>Track abrasion</span><strong>{selectedCircuit ? selectedCircuit.abrasion + " / 100" : "Loading…"}</strong></div>
           <label>Track temperature (°C)
             <input type="number" min="-20" max="80" step="1" value={temperature} onChange={(event) => { setTemperature(Number(event.target.value)); setResult(null); }} />
           </label>
@@ -128,16 +167,19 @@ export default function RaceWorkbench() {
           </label>
         </div>
         <div className="workbench-actions">
-          <button type="button" onClick={runSimulation} disabled={!seed.trim() || !Number.isInteger(laps) || laps < 8 || laps > 100 || !Number.isFinite(lapSeconds) || lapSeconds <= 0 || !Number.isFinite(abrasion) || abrasion < 0 || abrasion > 100 || !Number.isFinite(temperature)}>Run simulation</button>
-          <span>Grid: {TIER_CONFIG[tier].gridSize} test drivers · season 1 / round 1</span>
+          <button type="button" onClick={runSimulation} disabled={loadingCircuits || !selectedCircuit || !seed.trim() || !Number.isInteger(laps) || laps < 8 || laps > 100 || !Number.isFinite(temperature)}>Run simulation</button>
+          <span>{loadingCircuits ? "Loading circuit seed…" : "Grid: " + TIER_CONFIG[tier].gridSize + " test drivers · season 1 / round 1"}</span>
         </div>
+        {seedLoadError && <p className="error-message" role="alert">{seedLoadError}</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
+        {selectedCircuit && <p className="determinism-note">Source circuit: {selectedCircuit.name} · {selectedCircuit.lengthKm.toFixed(2)} km · {selectedCircuit.standardLaps} reference laps. Race distance is recalculated from circuit length and tier; the lap count remains editable for QA.</p>}
       </section>
 
       {result ? <section className="workbench-panel results-panel" aria-labelledby="results-title">
         <div className="panel-heading"><div><span className="section-index">02 / CLASSIFICATION</span><h2 id="results-title">Race result</h2></div><span className="qa-label">RUN #{runCount}</span></div>
         <div className="result-summary">
           <div><span>Winner</span><strong>{result.classification[0]?.driverName ?? "—"}</strong></div>
+          <div><span>Circuit</span><strong>{selectedCircuit?.name ?? "—"}</strong></div>
           <div><span>Distance</span><strong>{result.totalLaps} laps</strong></div>
           <div><span>Finish time</span><strong>{formatTime(result.classification[0]?.cumulativeTimeSeconds ?? 0)}</strong></div>
           <div><span>Seed</span><strong>{seed}</strong></div>
