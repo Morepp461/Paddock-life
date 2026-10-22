@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
+import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
 import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
 import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
@@ -100,7 +101,7 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
   const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
-    database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 ORDER BY d.pace DESC;", [careerId, playerTeamId]),
+    database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ? JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 ORDER BY d.pace DESC;", [currentSeason, currentSeason, careerId, playerTeamId]),
     database.query("SELECT r.race_id, r.round, r.laps, r.has_sprint, r.status, r.track_condition, c.name AS circuit_name, c.country AS circuit_country FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? ORDER BY r.round;", ["T" + tier, currentSeason]),
     database.query("SELECT o.offer_id, s.name, s.category, s.tier, o.contract_value, o.duration_seasons, o.focus, o.status FROM sponsor_offers o JOIN sponsor_pool s ON s.sponsor_id = o.sponsor_id WHERE o.career_id = ? AND o.team_id = ? ORDER BY s.tier, s.name;", [careerId, playerTeamId]),
     database.query("SELECT staff_id, role, name, age, skill, salary, is_free_agent FROM staff WHERE career_id = ? AND team_id = ? ORDER BY role;", [careerId, playerTeamId]),
@@ -331,6 +332,54 @@ export default function CareerMode() {
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
+  const [marketDrivers, setMarketDrivers] = useState<Row[]>([]);
+  const [marketDriverId, setMarketDriverId] = useState("");
+  const [marketSalary, setMarketSalary] = useState("100000");
+  const [marketDuration, setMarketDuration] = useState("2");
+  const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
+  const [marketBonus, setMarketBonus] = useState("0");
+  const [marketBusy, setMarketBusy] = useState(false);
+  const [marketError, setMarketError] = useState("");
+  const [marketResult, setMarketResult] = useState<ContractOfferResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMarket() {
+      if (tab !== "roster" || !database || !activeSave || !dashboard) return;
+      try {
+        const season = numberField(dashboard.career, "current_season", 1);
+        const band = TIER_CONFIG[activeSave.tier].driverAge;
+        const rows = await database.query(
+          `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
+             d.ambition, d.market_value, d.is_academy_driver
+           FROM drivers d
+           WHERE d.career_id = ? AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
+             AND NOT EXISTS (
+               SELECT 1 FROM driver_contracts dc
+               WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+             )
+           ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
+           LIMIT 100;`,
+          [activeSave.careerId, band.min, band.max, season, season],
+        );
+        if (!cancelled) {
+          setMarketDrivers(rows);
+          if (!rows.some((row) => field(row, "driver_id") === marketDriverId)) {
+            const first = rows[0];
+            setMarketDriverId(first ? field(first, "driver_id") : "");
+            if (first) {
+              const salary = Math.max(1, Math.round(numberField(first, "market_value") * 0.12 * (1 + 0.1 * (numberField(first, "ambition", 50) - 50) / 50)));
+              setMarketSalary(String(salary));
+            }
+          }
+        }
+      } catch (caught) {
+        if (!cancelled) setMarketError(caught instanceof Error ? caught.message : "Driver market gagal dimuat.");
+      }
+    }
+    void loadMarket();
+    return () => { cancelled = true; };
+  }, [tab, database, activeSave?.careerId, activeSave?.tier, dashboard]);
 
   useEffect(() => {
     let cancelled = false;
@@ -497,6 +546,38 @@ export default function CareerMode() {
     } finally { setDevelopmentBusy(false); }
   }
 
+  async function submitDriverOffer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!database || !activeSave || !dashboard || !marketDriverId) return;
+    setMarketBusy(true); setMarketError(""); setMarketResult(null);
+    try {
+      const result = await offerDriverContract(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        driverId: marketDriverId,
+        startSeason: numberField(dashboard.career, "current_season", 1),
+        durationSeasons: Number(marketDuration),
+        offeredSalary: Number(marketSalary),
+        signingBonus: Number(marketBonus),
+        role: marketRole,
+      });
+      setMarketResult(result);
+      if (result.decision === "counter-offer" && result.counterOffer) {
+        setMarketSalary(String(result.counterOffer.salary));
+        setMarketDuration(String(result.counterOffer.durationSeasons));
+      }
+      if (result.decision === "accepted") {
+        setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+        setMarketDrivers((rows) => rows.filter((row) => field(row, "driver_id") !== marketDriverId));
+        setMarketDriverId("");
+      }
+    } catch (caught) {
+      setMarketError(caught instanceof Error ? caught.message : "Penawaran kontrak gagal diproses.");
+    } finally {
+      setMarketBusy(false);
+    }
+  }
+
   async function settleSeason() {
     if (!database || !activeSave || !dashboard) return;
     setSettlingSeason(true); setSettlementError("");
@@ -575,7 +656,45 @@ export default function CareerMode() {
         </>}
       </section>}
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
-      {tab === "roster" && <section className="career-panel"><div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div></section>}
+      {tab === "roster" && <section className="career-grid">
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div>
+          <div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div>
+        </article>
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>TRANSFER MARKET</small><h2>Recruit a driver</h2></div><span>{marketDrivers.length} eligible drivers</span></div>
+          <p className="muted-text">Hanya driver tanpa kontrak aktif di season ini dan sesuai band umur tier yang ditampilkan. Engine akan mengevaluasi gaji, reputasi, role, durasi, bonus, kas, dan cooldown negosiasi.</p>
+          {marketError && <p className="inline-error">{marketError}</p>}
+          {marketResult && <div className={marketResult.decision === "accepted" ? "notice success" : "notice"}>
+            <strong>{marketResult.decision === "accepted" ? "Contract accepted" : marketResult.decision === "counter-offer" ? "Counter-offer received" : "Offer rejected"}</strong>
+            <p>Acceptance score {(marketResult.score * 100).toFixed(0)}% · Asking salary {formatCash(marketResult.askingSalary)}</p>
+            {marketResult.counterOffer && <p>Suggested salary {formatCash(marketResult.counterOffer.salary)} · {marketResult.counterOffer.durationSeasons} season(s)</p>}
+            {marketResult.rejectionReasons?.length ? <p>Reason: {marketResult.rejectionReasons.join(", ")}</p> : null}
+          </div>}
+          {marketDrivers.length ? <form className="contract-offer-form" onSubmit={(event) => void submitDriverOffer(event)}>
+            <label>Driver<select required value={marketDriverId} onChange={(event) => {
+              const id = event.target.value;
+              setMarketDriverId(id);
+              const candidate = marketDrivers.find((row) => field(row, "driver_id") === id);
+              if (candidate) {
+                const salary = Math.max(1, Math.round(numberField(candidate, "market_value") * 0.12 * (1 + 0.1 * (numberField(candidate, "ambition", 50) - 50) / 50)));
+                setMarketSalary(String(salary));
+              }
+              setMarketResult(null);
+            }}><option value="" disabled>Select driver</option>{marketDrivers.map((driver) => <option key={field(driver, "driver_id")} value={field(driver, "driver_id")}>{field(driver, "name")} · Age {field(driver, "age")} · Pace {numberField(driver, "pace").toFixed(0)}{numberField(driver, "is_academy_driver") ? " · Academy" : ""}</option>)}</select></label>
+            <div className="form-grid">
+              <label>Annual salary (¢p)<input type="number" min="1" step="1" required value={marketSalary} onChange={(event) => setMarketSalary(event.target.value)} /></label>
+              <label>Contract length<select value={marketDuration} onChange={(event) => setMarketDuration(event.target.value)}>{[1, 2, 3, 4].filter((length) => {
+                const candidate = marketDrivers.find((row) => field(row, "driver_id") === marketDriverId);
+                return numberField(candidate, "age") < 18 ? length <= 2 : true;
+              }).map((length) => <option key={length} value={String(length)}>{length} season{length > 1 ? "s" : ""}</option>)}</select></label>
+              <label>Race role<select value={marketRole} onChange={(event) => setMarketRole(event.target.value as "lead" | "second")}><option value="lead">Lead driver</option><option value="second">Second driver</option></select></label>
+              <label>Signing bonus (¢p)<input type="number" min="0" step="1" required value={marketBonus} onChange={(event) => setMarketBonus(event.target.value)} /></label>
+            </div>
+            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
+          </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
+        </article>
+      </section>}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "development" && <section className="career-grid">
         <article className="career-panel wide-panel">
