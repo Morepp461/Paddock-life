@@ -31,7 +31,7 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[];
+  career: Row; team: Row; teams: Row[]; roster: Row[]; marketDrivers: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[];
 };
 type Tab = "overview" | "calendar" | "roster" | "market" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
@@ -332,6 +332,14 @@ export default function CareerMode() {
   const [facilityBusy, setFacilityBusy] = useState(false);
   const [facilityError, setFacilityError] = useState("");
   const [raceError, setRaceError] = useState("");
+  const [marketDriverId, setMarketDriverId] = useState("");
+  const [marketSalary, setMarketSalary] = useState("0");
+  const [marketDuration, setMarketDuration] = useState("2");
+  const [marketBonus, setMarketBonus] = useState("0");
+  const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
+  const [marketBusy, setMarketBusy] = useState(false);
+  const [marketMessage, setMarketMessage] = useState("");
+  const [marketError, setMarketError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
 
@@ -552,7 +560,7 @@ export default function CareerMode() {
       developmentReasons.push("Semua slot development sedang terpakai.");
     }
     const tabs: { id: Tab; label: string }[] = [
-      { id: "overview", label: "Overview" }, { id: "calendar", label: "Calendar" }, { id: "roster", label: "Drivers" },
+      { id: "overview", label: "Overview" }, { id: "calendar", label: "Calendar" }, { id: "roster", label: "Drivers" }, { id: "market", label: "Driver Market" },
       { id: "staff", label: "Staff" }, { id: "development", label: "Development" }, { id: "sponsors", label: "Sponsors" }, { id: "finance", label: "Finance" }, { id: "standings", label: "Standings" },
     ];
     return <main className="career-mode-root">
