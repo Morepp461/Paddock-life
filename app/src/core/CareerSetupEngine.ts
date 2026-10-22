@@ -1,7 +1,7 @@
 import type { Difficulty } from "./InitialDistributions";
 import type { TierId } from "./GameConfig";
 function normalizeCareerText(value: string): string {
-  return value.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("en-US").replace(/\\s+/g, " ");
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
 }
 
 export type CareerPath = "new-team" | "takeover";
