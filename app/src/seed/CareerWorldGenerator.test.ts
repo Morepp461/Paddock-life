@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { SqlJsDatabase } from "../storage/SqlJsDatabase";
 import { runMigrations } from "../storage/Migrations";
 import { generateCareerWorld } from "./CareerWorldGenerator";
+import { seedStaticWorldDataFromPublic } from "./WorldSeeder";
 
 async function makeDatabase() {
   const wasmPath = new URL("../../../node_modules/sql.js/dist/sql-wasm.wasm", import.meta.url).pathname;
@@ -59,6 +60,7 @@ describe("atomic career world generation", () => {
   it("replaces a weak or medium AI team for a new team career", async () => {
     const database = await makeDatabase();
     try {
+      await seedStaticWorldDataFromPublic(database, { fetcher: seedFetcher });
       const candidates = await database.query("SELECT pool_team_id FROM team_pool WHERE tier = 3 AND strength_class != 'Kuat' ORDER BY pool_team_id LIMIT 1;");
       const usedCodes = new Set((await database.query("SELECT code FROM team_pool;")).map((row) => String(row.code)));
       const teamCode = ["PDX", "PLX", "NXT", "PAX"].find((code) => !usedCodes.has(code));
