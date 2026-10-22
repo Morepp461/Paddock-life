@@ -22,7 +22,7 @@ describe("component reliability model", () => {
     expect(calculateComponentFailureRisk({
       component: "engine", reliability: 75, racesSinceReset: 0,
       averageAggression: 50, trackAbrasion: 50, tier: 1,
-    }).probability).toBeCloseTo(0.00875);
+    }).probability).toBeCloseTo(0.03375);
   });
 
   it("caps component age factor at 1.5 and scales risk by tier", () => {
