@@ -71,6 +71,9 @@ describe("finance ledger", () => {
       transactionId: "bad", teamId: "team-ledger", season: 0, type: "expense", category: "repair", amount: 1,
     })).rejects.toThrow(RangeError);
     await expect(applyFinanceTransaction(database, {
+      transactionId: "fractional", teamId: "team-ledger", season: 1, type: "expense", category: "repair", amount: 0.5,
+    })).rejects.toThrow(RangeError);
+    await expect(applyFinanceTransaction(database, {
       transactionId: "bad-team", teamId: "missing", season: 1, type: "expense", category: "repair", amount: 1,
     })).rejects.toThrow("tidak ditemukan");
   });
