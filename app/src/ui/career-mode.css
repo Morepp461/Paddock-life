@@ -16,3 +16,5 @@
 
 .contract-offer-form{display:grid;gap:14px;margin-top:16px}.contract-offer-form>label,.contract-offer-form .form-grid label{display:grid;gap:7px;color:var(--muted,#9a9a9a);font-size:12px}.contract-offer-form input,.contract-offer-form select{width:100%;min-width:0;background:#111315;border:1px solid #393c3f;border-radius:3px;color:#f2f0e9;padding:11px 12px;font:inherit}.contract-offer-form .primary-button{justify-self:start}.notice{margin:14px 0;padding:12px 14px;border:1px solid #6c5a32;background:#242117;color:#e9d9a5}.notice.success{border-color:#3e7654;background:#14251b;color:#b9edc9}.notice p{margin:6px 0 0;font-size:12px}.notice strong{font-size:13px}
 @media(max-width:560px){.contract-offer-form .primary-button{width:100%}}
+
+.contract-offer-form .contract-bonus-toggle{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#141618;border:1px solid #393c3f;color:#d7d5cf;min-height:42px}.contract-offer-form .contract-bonus-toggle input{width:16px;height:16px;min-width:16px;margin:0;accent-color:var(--cm-red,#c9332b)}.contract-offer-form .contract-bonus-toggle input:focus-visible{outline:2px solid var(--cm-red,#c9332b);outline-offset:2px}
