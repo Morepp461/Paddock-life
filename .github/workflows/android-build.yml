@@ -1,6 +1,17 @@
 name: Android Debug APK
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'tools/**'
+      - '.github/workflows/android-build.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'tools/**'
+      - '.github/workflows/android-build.yml'
 jobs:
   build:
     runs-on: ubuntu-latest
