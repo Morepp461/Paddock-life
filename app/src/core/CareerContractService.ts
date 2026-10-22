@@ -12,7 +12,7 @@ import {
   type ContractOfferEvaluation,
 } from "./ContractNegotiationEngine";
 
-export type DriverDriverContractOfferInput = {
+export type DriverContractOfferInput = {
   readonly careerId: string;
   readonly teamId: string;
   readonly driverId: string;
