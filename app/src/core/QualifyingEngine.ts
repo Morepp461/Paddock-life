@@ -94,7 +94,7 @@ export function classifyQualifying(input: {
     const q1Cut = config.qualifyingFormat === "q1-24-12-q2" ? 12 : 18;
     const q1Advanced = q1.slice(0, q1Cut);
     const q1Eliminated = q1.slice(q1Cut).sort((left, right) =>
-      input.sessions[0].bestLapSecondsByDriver[right.driverId] - input.sessions[0].bestLapSecondsByDriver[left.driverId]
+      input.sessions[0].bestLapSecondsByDriver[left.driverId] - input.sessions[0].bestLapSecondsByDriver[right.driverId]
       || (originalOrder.get(left.driverId)! - originalOrder.get(right.driverId)!),
     );
     q1Eliminated.forEach((driver, index) => {
