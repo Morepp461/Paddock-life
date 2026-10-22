@@ -1,8 +1,9 @@
-import { DIFFICULTY_MULTIPLIERS, FINANCE_GRADE_MULTIPLIERS, INITIAL_DISTRIBUTIONS, PERFORMANCE_GRADE_OFFSETS, clamp, sampleBoundedNormal as sampleDelta } from "../core/InitialDistributions";
+import { DIFFICULTY_MULTIPLIERS, FINANCE_GRADE_MULTIPLIERS, INITIAL_DISTRIBUTIONS, PERFORMANCE_GRADE_OFFSETS, clamp } from "../core/InitialDistributions";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { SeededRandom } from "../core/SeededRandom";
-import { hashSeed } from "../core/RandomDistributions";
+import { hashSeed, sampleBoundedNormal as sampleDelta } from "../core/RandomDistributions";
 import { generateSeasonCalendar } from "../core/SeasonCalendar";
+import { selectSponsorTier } from "../core/SponsorEngine";
 import { validateCareerSetupDraft, type CareerSetupDraft, type ValidatedCareerSetup, type CareerTeamCandidate } from "../core/CareerSetupEngine";
 import { generateName, normalizeFullName, type CountryNameProfile, type NameCulture, type NamePool } from "./NameGenerator";
 import { seedStaticWorldDataFromPublic } from "./WorldSeeder";
@@ -30,8 +31,6 @@ const STAFF_ROLES: Readonly<Record<TierId, readonly string[]>> = {
   5: ["Race Engineer", "Mechanical Engineer", "Performance Coach", "Scout", "Strategist"],
   6: ["Race Engineer", "Mechanical Engineer", "Performance Coach"],
 };
-const FACILITY_KEYS = ["aero_center_level", "engine_dept_level", "chassis_level", "simulator_level", "rnd_level", "academy_level"] as const;
-const FINANCE_GRADE: Readonly<Record<string, "A" | "B" | "C" | "D">> = { A: "A", B: "B", C: "C", D: "D" };
 
 function stableId(seed: string, kind: string, index: number | string): string {
   return kind + "_" + hashSeed([seed, kind, index]).toString(16).padStart(8, "0");
@@ -147,7 +146,7 @@ async function insertDriver(
   };
   const driverId = stableId(input.seed, "driver", input.index);
   const marketValue = input.tier === 6 ? 0 : Math.round(TIER_CONFIG[input.tier].requiredBudget * clamp(overall / Math.max(1, dist.driverOverallMean), 0.25, 2.0) * 0.06);
-  await input.database.run(
+  await database.run(
     `INSERT INTO drivers
       (driver_id, career_id, name, pace, qualifying, racecraft, consistency, wet_skill, tyre_management,
        overtaking, defending, starts, adaptability, focus, pressure, morale, confidence, aggression, teamwork,
@@ -163,7 +162,7 @@ async function insertDriver(
   if (input.teamId) {
     const rb = TIER_CONFIG[input.tier].requiredBudget;
     const salary = input.tier === 6 ? 0 : Math.round(rb * 0.06);
-    await input.database.run(
+    await database.run(
       "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?);",
       [stableId(input.seed, "contract", input.index), driverId, input.teamId, salary, Math.round(salary * 0.15), Math.round(salary * 0.02), Math.round(salary * 0.01), Math.round(salary * 0.08)],
     );
@@ -380,12 +379,14 @@ export async function generateCareerWorld(
     const playerTeam = await database.query("SELECT reputation FROM teams WHERE team_id = ?;", [playerTeamId]);
     const playerReputation = Number(playerTeam[0]?.reputation ?? 0);
     const tier = validated.selectedTier;
-    const eligibleSponsorTiers = tier === 6 ? [] : tier === 5 ? [5, 4] : tier === 4 ? [5, 4, 3] : tier === 3 ? [4, 3, 2] : tier === 2 ? [3, 2, 1] : [3, 2, 1];
+    const eligibleSponsorTiers = tier === 6 ? [] : tier === 5 ? [5, 4] : tier === 4 ? [5, 4, 3] : tier === 3 ? [4, 3, 2] : [3, 2, 1];
     const eligibleSponsors = sponsors.filter((sponsor) => eligibleSponsorTiers.includes(sponsor.tier) && sponsor.min_team_reputation <= playerReputation);
     const sponsorCount = tier === 6 ? 0 : Math.max(1, Math.round(3 * difficulty.sponsorOffers));
     const selectedSponsorIds = new Set<string>();
     for (let index = 0; index < sponsorCount; index += 1) {
-      const candidates = eligibleSponsors.filter((sponsor) => !selectedSponsorIds.has(sponsor.sponsor_id));
+      const weightedTier = selectSponsorTier(rng, tier);
+      const preferred = eligibleSponsors.filter((sponsor) => sponsor.tier === weightedTier && !selectedSponsorIds.has(sponsor.sponsor_id));
+      const candidates = preferred.length ? preferred : eligibleSponsors.filter((sponsor) => !selectedSponsorIds.has(sponsor.sponsor_id));
       if (!candidates.length) break;
       const sponsor = pick(candidates, rng);
       selectedSponsorIds.add(sponsor.sponsor_id);
