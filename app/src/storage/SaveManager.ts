@@ -33,7 +33,9 @@ const CURRENT_SCHEMA_VERSION = 1;
 const SAVE_KEYS = ["current", "backup-1", "backup-2"] as const;
 
 async function sha256Hex(data: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", data);
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", copy.buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
