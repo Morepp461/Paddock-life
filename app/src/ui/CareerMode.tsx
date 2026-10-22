@@ -11,6 +11,7 @@ import { generateCareerWorld, type CareerGenerationResult } from "../seed/Career
 import { openCareerDatabase } from "../storage/DatabaseFactory";
 import type { IDatabase } from "../storage/IDatabase";
 import RaceWorkbench from "./RaceWorkbench";
+import "./career-mode.css";
 
 type CatalogTeam = {
   id: string; name: string; code: string; country: string; tier: TierId;
