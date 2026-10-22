@@ -251,7 +251,7 @@ export async function generateCareerWorld(
       const facilityLevel = clamp(facilityBase, 1, 10);
       const rep = Math.round(distribution.reputationRange[0] + rng.next() * (distribution.reputationRange[1] - distribution.reputationRange[0]));
       const teamName = playerNew ? validated.newTeam!.name : source.name;
-      const baseCountry = playerNew ? validated.newTeam!.countryCode : source.country;
+      const baseCountry = playerNew ? (pool.countries.find((country) => country.countryCode === validated.newTeam!.countryCode)?.countryName ?? validated.newTeam!.countryCode) : source.country;
       const origin = playerNew ? "generated" : "pool";
       if (isPlayer) playerTeamId = teamId;
       const character = playerNew ? "Player-founded team" : source.character;
@@ -272,7 +272,7 @@ export async function generateCareerWorld(
           mechanical_grip, traction, braking, tyre_management, engine_reliability, gearbox_reliability,
           brake_reliability, suspension_reliability, electronics_reliability, development_points)
          VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
-        [stableId(seed, "car", source.pool_team_id), teamId, ...Array.from({ length: 8 }, () => clamp(carBase + sampleDelta(rng, 2), 1, 100)),
+        [stableId(seed, "car", source.pool_team_id), teamId, ...Array.from({ length: 9 }, () => clamp(carBase + sampleDelta(rng, 2), 1, 100)),
           ...Array.from({ length: 5 }, () => clamp(distribution.reliabilityMean + PERFORMANCE_GRADE_OFFSETS[performanceGrade].reliability + sampleDelta(rng, 3), 1, 100))],
       );
       const driverIds: string[] = [];
@@ -299,7 +299,7 @@ export async function generateCareerWorld(
         await database.run(
           "INSERT INTO staff (staff_id, career_id, team_id, role, name, nationality, name_culture, gender, age, skill, specialization, reputation, salary, potential, contract_end, is_free_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0);",
           [staffId, careerId, teamId, role, generated.fullName, generated.countryCode, generated.cultureId, generated.gender, age,
-            skill, role, Math.round(skill * 100), salary, clamp(skill + 5 + rng.next() * 15, 0, 100)],
+            skill, role, Math.min(9999, Math.round(skill * 100)), salary, clamp(skill + 5 + rng.next() * 15, 0, 100)],
         );
         staffCreated += 1;
       }
