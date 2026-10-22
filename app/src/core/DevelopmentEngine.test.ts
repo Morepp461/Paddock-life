@@ -67,6 +67,23 @@ describe("development project model", () => {
     expect(calculateCancellationRefund(240_000, 1)).toBe(0);
   });
 
+  it("applies signed secondary reliability effects separately from project risk penalties", () => {
+    let successfulSeed: number | undefined;
+    for (let seed = 1; seed <= 100; seed += 1) {
+      if (resolveDevelopmentProject({ ...base, worldSeed: seed }).success) {
+        successfulSeed = seed;
+        break;
+      }
+    }
+    expect(successfulSeed).toBeDefined();
+    const positive = resolveDevelopmentProject({ ...base, worldSeed: successfulSeed!, secondaryReliabilityEffect: "positive" });
+    const negative = resolveDevelopmentProject({ ...base, worldSeed: successfulSeed!, secondaryReliabilityEffect: "negative" });
+    expect(positive.secondaryReliabilityDelta).toBeGreaterThan(0);
+    expect(negative.secondaryReliabilityDelta).toBeLessThan(0);
+    expect(positive.reliabilityPenalty).toBe(-1);
+    expect(negative.reliabilityPenalty).toBe(-1);
+  });
+
   it("uses diminishing returns and engineer multipliers from source tables", () => {
     expect(calculateEngineerMultiplier(20)).toBe(0.92);
     expect(calculateEngineerMultiplier(60)).toBe(1.06);
