@@ -12,7 +12,7 @@ import {
   type ContractOfferEvaluation,
 } from "./ContractNegotiationEngine";
 
-export type DriverContractOfferInput = {
+export type DriverDriverContractOfferInput = {
   readonly careerId: string;
   readonly teamId: string;
   readonly driverId: string;
@@ -36,7 +36,7 @@ export interface ContractOfferResult {
     readonly durationSeasons: number;
     readonly score: number;
   };
-  readonly rejectionReasons: readonly string[];
+  readonly rejectionReasons?: readonly string[];
 }
 function n(row: DatabaseRow | undefined, key: string, fallback = 0): number {
   const value = Number(row?.[key]);
@@ -62,7 +62,7 @@ function lowScoreReasons(terms: ContractAcceptanceTerms): string[] {
   ];
   return weighted.sort((a, b) => a.value - b.value).slice(0, 2).map((item) => item.label);
 }
-async function contractContext(database: IDatabase, input: DriverContractOfferInput) {
+async function contractContext(database: IDatabase, input: DriverDriverContractOfferInput) {
   const [careerRows, teamRows, driverRows, cars] = await Promise.all([
     database.query("SELECT world_seed, current_season, current_race FROM career WHERE career_id = ?;", [input.careerId]),
     database.query("SELECT team_id, reputation, cash, division_id, is_active, is_player_team FROM teams WHERE team_id = ? AND career_id = ?;", [input.teamId, input.careerId]),
@@ -121,7 +121,7 @@ async function contractContext(database: IDatabase, input: DriverContractOfferIn
   };
 }
 
-export async function offerDriverContract(database: IDatabase, input: ContractOfferInput): Promise<ContractOfferResult> {
+export async function offerDriverContract(database: IDatabase, input: DriverContractOfferInput): Promise<ContractOfferResult> {
   if (!Number.isSafeInteger(input.startSeason) || input.startSeason < 1) throw new RangeError("Season kontrak harus integer positif.");
   for (const [name, value] of [
     ["offeredSalary", input.offeredSalary], ["signingBonus", input.signingBonus ?? 0],
