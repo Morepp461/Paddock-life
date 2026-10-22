@@ -137,7 +137,7 @@ export function resolveDevelopmentProject(input: DevelopmentProjectInput): Devel
   const reliabilityGain = success && reliabilityProject ? config.reliabilityGain : 0;
   const reliabilityPenalty = success && !reliabilityProject ? config.reliabilityPenalty : 0;
   const secondaryReliabilityDelta = success && input.secondaryReliabilityEffect !== undefined
-    ? secondaryAttributeGain * (input.secondaryReliabilityEffect === "positive" ? 1 : -1)
+    ? secondaryGain * (input.secondaryReliabilityEffect === "positive" ? 1 : -1)
     : 0;
 
   return {
