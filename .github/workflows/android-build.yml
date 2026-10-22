@@ -1,6 +1,8 @@
 name: Android Debug APK
 on:
   workflow_dispatch:
+  push:
+    branches: ["chore/android-build-smoke"]
 jobs:
   build:
     runs-on: ubuntu-latest
