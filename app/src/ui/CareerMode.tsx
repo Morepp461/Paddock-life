@@ -6,7 +6,8 @@ import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateB
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
 import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
-import { calculateDevelopmentProjectCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
+import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
+import { FACILITY_CATALOG, upgradeTeamFacility, type FacilityId } from "../core/FacilityUpgradeService";
 import { calculateEffectiveDevelopmentDuration } from "../core/DevelopmentEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
@@ -319,6 +320,8 @@ export default function CareerMode() {
   const [developmentSize, setDevelopmentSize] = useState<DevelopmentProjectSize>("minor");
   const [developmentBusy, setDevelopmentBusy] = useState(false);
   const [developmentError, setDevelopmentError] = useState("");
+  const [facilityBusy, setFacilityBusy] = useState(false);
+  const [facilityError, setFacilityError] = useState("");
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
@@ -439,6 +442,16 @@ export default function CareerMode() {
     }
   }
 
+  async function upgradeFacility(facility: FacilityId) {
+    if (!database || !activeSave || !dashboard) return;
+    setFacilityBusy(true); setFacilityError("");
+    try {
+      await upgradeTeamFacility(database, { teamId: String(dashboard.team.team_id), facility, season: numberField(dashboard.career, "current_season", 1) });
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setFacilityError(caught instanceof Error ? caught.message : "Upgrade fasilitas gagal.");
+    } finally { setFacilityBusy(false); }
+  }
   async function startDevelopment() {
     if (!database || !activeSave || !dashboard) return;
     setDevelopmentBusy(true); setDevelopmentError("");
@@ -592,6 +605,21 @@ export default function CareerMode() {
             const pct = Math.min(100, Math.round(progress / duration * 100));
             return <div className="development-project-card" key={field(project, "project_instance_id")}><div className="development-project-head"><div><strong>{field(project, "project_name")}</strong><span>{field(project, "project_catalog_id")} · {field(project, "size")} · {formatCash(numberField(project, "cost"))}</span></div><button className="mini-action" disabled={developmentBusy} onClick={() => void cancelDevelopment(field(project, "project_instance_id"))}>Cancel</button></div><div className="development-progress"><span style={{ width: pct + "%" }} /></div><small>{progress.toFixed(0)} / {duration.toFixed(2)} race progress · {pct}%</small></div>;
           })}</div> : <p className="muted-text">Belum ada project aktif. Pilih upgrade yang memenuhi syarat di atas untuk memulai.</p>}
+        </article>
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>TEAM INFRASTRUCTURE</small><h2>Facility upgrades</h2></div><span>MAX LEVEL 10</span></div>
+          <p className="muted-text">Upgrade costs follow the documented RB-based formula. Each purchase and its finance ledger entry are committed atomically.</p>
+          {facilityError && <p className="inline-error">{facilityError}</p>}
+          <div className="facility-grid">{FACILITY_CATALOG.map((facility) => {
+            const level = numberField(team, facility.column, 1);
+            const cost = level < 10 ? calculateFacilityUpgradeCost(activeSave.tier, level) : 0;
+            return <div className="facility-card" key={facility.id}>
+              <div><small>{facility.id.replaceAll("_", " ").toUpperCase()}</small><strong>{facility.label}</strong></div>
+              <div className="facility-level"><span>LEVEL</span><b>{level}<i>/10</i></b></div>
+              <div className="facility-cost"><span>{level < 10 ? "NEXT UPGRADE" : "MAXIMUM LEVEL"}</span><b>{level < 10 ? formatCash(cost) : "MAX"}</b></div>
+              <button className="mini-action accept" disabled={facilityBusy || level >= 10} onClick={() => void upgradeFacility(facility.id)}>{facilityBusy ? "Processing…" : level >= 10 ? "Fully upgraded" : "Upgrade to L" + (level + 1)}</button>
+            </div>;
+          })}</div>
         </article>
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>DEVELOPMENT HISTORY</small><h2>Completed and cancelled</h2></div><span>{dashboard.developmentHistory.length} records</span></div>
