@@ -62,7 +62,7 @@ function lowScoreReasons(terms: ContractAcceptanceTerms): string[] {
   ];
   return weighted.sort((a, b) => a.value - b.value).slice(0, 2).map((item) => item.label);
 }
-async function contractContext(database: IDatabase, input: DriverDriverContractOfferInput) {
+async function contractContext(database: IDatabase, input: DriverContractOfferInput) {
   const [careerRows, teamRows, driverRows, cars] = await Promise.all([
     database.query("SELECT world_seed, current_season, current_race FROM career WHERE career_id = ?;", [input.careerId]),
     database.query("SELECT team_id, reputation, cash, division_id, is_active, is_player_team FROM teams WHERE team_id = ? AND career_id = ?;", [input.teamId, input.careerId]),
@@ -145,7 +145,7 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
   }
   if (score.decision === "accepted") {
     const contractId = "contract_" + hashSeed([
-      context.career.world_seed, input.careerId, input.teamId, input.driverId,
+      String(context.career.world_seed), input.careerId, input.teamId, input.driverId,
       input.startSeason, input.durationSeasons, input.offeredSalary,
     ]).toString(16).padStart(8, "0");
     const endSeason = input.startSeason + input.durationSeasons - 1;
