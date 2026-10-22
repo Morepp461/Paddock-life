@@ -52,19 +52,22 @@ describe("career contract service", () => {
       const askingSalary = calculateDriverAskingSalary({
         marketValue: Number(driver.market_value), ambition: Number(driver.ambition), demandFactor,
       });
+      const offeredSalary = Math.round(askingSalary * 1.2);
+      const signingBonus = Math.round(offeredSalary * 0.15);
+      const championshipBonus = Math.round(offeredSalary * 0.08);
       const result = await offerDriverContract(database, {
         careerId: career.careerId, teamId, driverId: String(driver.driver_id),
-        startSeason: 2, durationSeasons: 2, offeredSalary: Math.round(askingSalary * 1.2),
-        signingBonus: 1000, championshipBonus: askingSalary, releaseClause: null, role: "lead",
+        startSeason: 2, durationSeasons: 2, offeredSalary,
+        signingBonus, championshipBonus, releaseClause: null, role: "lead",
       });
       expect(result.decision).toBe("accepted");
       const contractId = result.contractId;
       if (!contractId) throw new Error("Accepted contract did not return a contract ID.");
       expect(await database.query("SELECT start_season, end_season, salary FROM driver_contracts WHERE contract_id = ?;", [contractId])).toEqual([
-        { start_season: 2, end_season: 3, salary: Math.round(askingSalary * 1.2) },
+        { start_season: 2, end_season: 3, salary: offeredSalary },
       ]);
       expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id = ?;", ["contract-bonus_" + contractId])).toEqual([
-        { category: "contract-signing-bonus", amount: -1000 },
+        { category: "contract-signing-bonus", amount: -signingBonus },
       ]);
     } finally {
       await database.close();
@@ -101,6 +104,8 @@ describe("career contract service", () => {
       await expect(offerDriverContract(database, { ...base, releaseClause: 100_000 })).rejects.toThrow("1,5–3 kali");
       await expect(offerDriverContract(database, { ...base, releaseClause: 400_000 })).rejects.toThrow("1,5–3 kali");
       await expect(offerDriverContract(database, { ...base, offeredSalary: 0 })).rejects.toThrow("lebih besar dari nol");
+      await expect(offerDriverContract(database, { ...base, signingBonus: 1 })).rejects.toThrow("Signing bonus harus 10–25%");
+      await expect(offerDriverContract(database, { ...base, winBonus: 1 })).rejects.toThrow("Win bonus harus mengikuti");
       expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE driver_id = ?;", [String(driver.driver_id)])).toEqual([{ count: 0 }]);
     } finally {
       await database.close();
