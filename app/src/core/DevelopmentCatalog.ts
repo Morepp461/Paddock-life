@@ -1,4 +1,4 @@
-import type { DevelopmentProjectSize, EconomyTierId } from "./EconomyEngine";
+import type { DevelopmentProjectSize } from "./EconomyEngine";
 import type { TierId } from "./GameConfig";
 
 export type DevelopmentCategory = "aero" | "engine" | "chassis" | "reliability";
@@ -100,7 +100,7 @@ export function validateDevelopmentSelection(input: {
   } else if (input.chiefEngineerSkill < CHIEF_ENGINEER_MINIMUM_SKILL[input.tier][input.size]) {
     reasons.push(`Chief Engineer membutuhkan skill minimal ${CHIEF_ENGINEER_MINIMUM_SKILL[input.tier][input.size]} untuk ${input.size}.`);
   }
-  if (!Number.isSafeInteger(input.facilityLevel) || input.facilityLevel < MINIMUM_FACILITY_LEVEL[input.size]) {
+  if (!Number.isSafeInteger(input.facilityLevel) || input.facilityLevel < MINIMUM_FACILITY_LEVEL[input.size] || input.facilityLevel > 10) {
     reasons.push(`Fasilitas terkait minimal level ${MINIMUM_FACILITY_LEVEL[input.size]}.`);
   }
   return { eligible: reasons.length === 0, reasons };
