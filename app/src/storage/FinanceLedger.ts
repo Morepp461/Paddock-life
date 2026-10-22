@@ -31,7 +31,7 @@ export async function applyFinanceTransaction(
   }
   if (!Number.isSafeInteger(input.season) || input.season < 1 ||
       (input.race !== undefined && input.race !== null && (!Number.isSafeInteger(input.race) || input.race < 1)) ||
-      !Number.isFinite(input.amount)) {
+      !Number.isSafeInteger(input.amount)) {
     throw new RangeError("Season, race, atau nominal transaksi tidak valid.");
   }
 
