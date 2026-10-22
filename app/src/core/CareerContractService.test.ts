@@ -58,10 +58,12 @@ describe("career contract service", () => {
       });
       expect(result.decision).toBe("accepted");
       expect(result.contractId).toBeTruthy();
-      expect(await database.query("SELECT start_season, end_season, salary FROM driver_contracts WHERE contract_id = ?;", [result.contractId])).toEqual([
+      const contractId = result.contractId;
+      if (!contractId) throw new Error("Accepted offer did not return a contract ID.");
+      expect(await database.query("SELECT start_season, end_season, salary FROM driver_contracts WHERE contract_id = ?;", [contractId])).toEqual([
         { start_season: 2, end_season: 3, salary: Math.round(askingSalary * 1.2) },
       ]);
-      expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id = ?;", ["contract-bonus_" + result.contractId])).toEqual([
+      expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id = ?;", ["contract-bonus_" + contractId])).toEqual([
         { category: "contract-signing-bonus", amount: -1000 },
       ]);
     } finally {
