@@ -427,6 +427,17 @@ export default function CareerMode() {
     }
   }
 
+  async function settleSeason() {
+    if (!database || !activeSave || !dashboard) return;
+    setSettlingSeason(true); setSettlementError("");
+    try {
+      await settleCareerSeason(database, { careerId: activeSave.careerId, season: numberField(dashboard.career, "current_season", 1), tier: activeSave.tier });
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setSettlementError(caught instanceof Error ? caught.message : "Season settlement gagal; transaksi dibatalkan.");
+    } finally { setSettlingSeason(false); }
+  }
+
   async function runNextRace() {
     if (!database || !activeSave) return;
     setRunningRace(true); setRaceError(""); setLastRace(null);
