@@ -138,15 +138,14 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       compound, weatherAdaptation: numberField(driver, "wet_skill"),
     })),
   });
-  const fastestByDriver = new Map<string, number>();
-  for (const lap of result.laps.flat()) {
-    fastestByDriver.set(lap.driverId, Math.min(fastestByDriver.get(lap.driverId) ?? Infinity, lap.lapTimeSeconds));
-  }
+  const allLapResults = result.laps.flat();
+  const fastestOverall = Math.min(...allLapResults.map((lap) => lap.lapTimeSeconds));
+  const fastestDrivers = new Set(allLapResults.filter((lap) => lap.lapTimeSeconds === fastestOverall).map((lap) => lap.driverId));
   const ordered = [...result.classification].sort((a, b) => a.position - b.position);
   await database.transaction(async () => {
     for (const row of ordered) {
       const positionPoints = POINTS[row.position] ?? 0;
-      const fastestLap = row.lapTimeSeconds === fastestByDriver.get(row.driverId) ? 1 : 0;
+      const fastestLap = fastestDrivers.has(row.driverId) ? 1 : 0;
       await database.run(
         "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, NULL, ?, ?, ?, 0, ?, ?, 0, ?);",
         [String(race.race_id), row.driverId, String(raceDrivers.find((driver) => String(driver.driver_id) === row.driverId)?.team_id), row.position, Number(race.laps), fastestLap, compound, positionPoints, row.cumulativeTimeSeconds],
@@ -155,8 +154,8 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       const existing = prior[0];
       if (existing) {
         await database.run(
-          "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ? WHERE standing_id = ?;",
-          [positionPoints, row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, String(existing.standing_id)],
+          "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ?, fastest_laps = fastest_laps + ? WHERE standing_id = ?;",
+          [positionPoints, row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap, String(existing.standing_id)],
         );
       } else {
         await database.run(
