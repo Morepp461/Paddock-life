@@ -28,7 +28,7 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "sponsor_contracts", "sponsor_offers", "manager_profiles", "staff", "board_objectives",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
     expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
