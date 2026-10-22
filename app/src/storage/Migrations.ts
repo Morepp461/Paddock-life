@@ -292,6 +292,29 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_team_pool_tier_strength ON team_pool(tier, strength_class);
     `,
   },
+  {
+    version: 4,
+    description: "store culture-aware name ingredients and blocked real-driver names",
+    sql: `
+      CREATE TABLE IF NOT EXISTS name_culture_pool (
+        culture_id TEXT NOT NULL,
+        gender TEXT NOT NULL CHECK (gender IN ('male', 'female', 'surname')),
+        name TEXT NOT NULL,
+        PRIMARY KEY (culture_id, gender, name)
+      );
+      CREATE TABLE IF NOT EXISTS nationality_name_cultures (
+        country_code TEXT PRIMARY KEY,
+        country_name TEXT NOT NULL,
+        global_weight INTEGER NOT NULL CHECK (global_weight >= 0),
+        culture_weights_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS blocked_names (
+        normalized_full_name TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_name_pool_lookup ON name_culture_pool(culture_id, gender);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
