@@ -32,7 +32,7 @@ function shuffle<T>(items: readonly T[], random: SeededRandom): T[] {
 }
 
 function validateCircuits(circuits: readonly CalendarCircuit[]): void {
-  if (circuits.length < 24) throw new RangeError("Kalender membutuhkan minimal 24 sirkuit unik.");
+  if (circuits.length < 1) throw new RangeError("Pool sirkuit tidak boleh kosong.");
   const ids = new Set<string>();
   for (const circuit of circuits) {
     if (!circuit.id.trim() || !circuit.name.trim() || ids.has(circuit.id)) {
