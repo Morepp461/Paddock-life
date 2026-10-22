@@ -114,7 +114,7 @@ export default function DriverMarketPanel(props: Props) {
   return <section className="career-grid">
     <article className="career-panel wide-panel">
       <div className="panel-title"><div><small>TRANSFER MARKET / FREE AGENTS</small><h2>Find your next driver</h2></div><span>{props.drivers.length} eligible drivers</span></div>
-      <p className="muted-text">Daftar ini berisi free agent non-akademi yang memenuhi batas umur Tier {props.tier} untuk season berikutnya. Kontrak mulai season {props.currentSeason}. Negosiasi dengan driver yang masih terikat kontrak, release clause, dan tawaran AI belum tersedia di layar ini.</p>
+      <p className="muted-text">Daftar ini berisi free agent dan driver academy yang memenuhi batas umur Tier {props.tier} untuk season berikutnya. Kontrak mulai season {props.currentSeason}. Negosiasi dengan driver yang masih terikat kontrak, release clause, dan tawaran AI belum tersedia di layar ini.</p>
       {props.drivers.length === 0 ? <p className="muted-text">Tidak ada free agent yang memenuhi syarat umur divisi saat ini.</p> : <>
         <label className="market-driver-select">Driver
           <select value={value(selected ?? {}, "driver_id")} onChange={(event) => chooseDriver(event.target.value)}>
