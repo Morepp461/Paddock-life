@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
-import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
+import { calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound, calculateTeamDriverPayroll } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
@@ -269,7 +269,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     const rounds = TIER_CONFIG[tier].roundsPerSeason;
     const raceCosts = [
       { category: "operating-cost", amount: -calculateOperatingCostPerRound(tier) },
-      { category: "driver-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageDriverPayroll(tier) / rounds) },
+      { category: "driver-payroll", amount: tier === 6 ? 0 : -Math.round(calculateTeamDriverPayroll(tier) / rounds) },
       { category: "staff-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageStaffPayroll(tier) / rounds) },
     ];
     for (const teamRow of teamRows) {
