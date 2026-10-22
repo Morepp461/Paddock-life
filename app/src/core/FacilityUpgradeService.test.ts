@@ -52,15 +52,15 @@ describe("facility upgrade service", () => {
     }
   });
 
-  it("does not change cash or level if the team cannot afford the upgrade", async () => {
+  it("does not change cash or level while the team is already overdrawn", async () => {
     const database = await makeDatabase();
     try {
       const career = await makeCareer(database, "facility-insufficient-cash");
-      await database.run("UPDATE teams SET cash = 1 WHERE team_id = ?;", [career.teamId]);
+      await database.run("UPDATE teams SET cash = -1 WHERE team_id = ?;", [career.teamId]);
       await expect(upgradeTeamFacility(database, { teamId: career.teamId, facility: "academy", season: 1 }))
-        .rejects.toThrow("overdraft");
+        .rejects.toThrow("saldo negatif");
       expect(await database.query("SELECT cash, academy_level FROM teams WHERE team_id = ?;", [career.teamId]))
-        .toEqual([{ cash: 1, academy_level: 1 }]);
+        .toEqual([{ cash: -1, academy_level: 1 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM finances WHERE category = 'facility-upgrade';"))
         .toEqual([{ count: 0 }]);
     } finally {
