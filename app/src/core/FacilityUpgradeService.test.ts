@@ -39,10 +39,10 @@ describe("facility upgrade service", () => {
       const career = await makeCareer(database, "facility-upgrade-test");
       const before = await database.query("SELECT cash, rnd_level FROM teams WHERE team_id = ?;", [career.teamId]);
       const result = await upgradeTeamFacility(database, { teamId: career.teamId, facility: "rnd", season: 1 });
-      expect(result.previousLevel).toBe(1);
-      expect(result.newLevel).toBe(2);
-      expect(result.cost).toBe(calculateFacilityUpgradeCost(3, 1));
-      expect(Number((await database.query("SELECT rnd_level FROM teams WHERE team_id = ?;", [career.teamId]))[0]!.rnd_level)).toBe(2);
+      expect(result.previousLevel).toBe(Number(before[0]!.rnd_level));
+      expect(result.newLevel).toBe(Number(before[0]!.rnd_level) + 1);
+      expect(result.cost).toBe(calculateFacilityUpgradeCost(3, Number(before[0]!.rnd_level)));
+      expect(Number((await database.query("SELECT rnd_level FROM teams WHERE team_id = ?;", [career.teamId]))[0]!.rnd_level)).toBe(result.newLevel);
       expect(Number((await database.query("SELECT cash FROM teams WHERE team_id = ?;", [career.teamId]))[0]!.cash)).toBe(Number(before[0]!.cash) - result.cost);
       expect(await database.query("SELECT amount, category FROM finances WHERE transaction_id = ?;", [
         "facility_" + career.teamId + "_S1_rnd_L2",
@@ -56,11 +56,12 @@ describe("facility upgrade service", () => {
     const database = await makeDatabase();
     try {
       const career = await makeCareer(database, "facility-insufficient-cash");
+      const before = await database.query("SELECT academy_level FROM teams WHERE team_id = ?;", [career.teamId]);
       await database.run("UPDATE teams SET cash = -1 WHERE team_id = ?;", [career.teamId]);
       await expect(upgradeTeamFacility(database, { teamId: career.teamId, facility: "academy", season: 1 }))
         .rejects.toThrow("saldo negatif");
       expect(await database.query("SELECT cash, academy_level FROM teams WHERE team_id = ?;", [career.teamId]))
-        .toEqual([{ cash: -1, academy_level: 1 }]);
+        .toEqual([{ cash: -1, academy_level: Number(before[0]!.academy_level) }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM finances WHERE category = 'facility-upgrade';"))
         .toEqual([{ count: 0 }]);
     } finally {
