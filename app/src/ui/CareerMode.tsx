@@ -4,8 +4,7 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
-import { offerDriverContract } from "../core/CareerContractService";
-import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
+import DriverMarketPanel from "./DriverMarketPanel";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
 import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
 import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
@@ -332,14 +331,6 @@ export default function CareerMode() {
   const [facilityBusy, setFacilityBusy] = useState(false);
   const [facilityError, setFacilityError] = useState("");
   const [raceError, setRaceError] = useState("");
-  const [marketDriverId, setMarketDriverId] = useState("");
-  const [marketSalary, setMarketSalary] = useState("0");
-  const [marketDuration, setMarketDuration] = useState("2");
-  const [marketBonus, setMarketBonus] = useState("0");
-  const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
-  const [marketBusy, setMarketBusy] = useState(false);
-  const [marketMessage, setMarketMessage] = useState("");
-  const [marketError, setMarketError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
 
@@ -587,6 +578,7 @@ export default function CareerMode() {
       </section>}
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
       {tab === "roster" && <section className="career-panel"><div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div></section>}
+      {tab === "market" && database && activeSave && dashboard && <DriverMarketPanel database={database} careerId={activeSave.careerId} teamId={String(dashboard.team.team_id)} currentSeason={numberField(dashboard.career, "current_season", 1)} worldSeed={String(dashboard.career.world_seed ?? "")} tier={activeSave.tier} drivers={dashboard.marketDrivers} onChanged={async () => { await refreshDashboard(database, activeSave); }} />}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "development" && <section className="career-grid">
         <article className="career-panel wide-panel">
