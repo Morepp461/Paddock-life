@@ -5,6 +5,7 @@ import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
+import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
 import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
 import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
@@ -348,8 +349,15 @@ export default function CareerMode() {
     async function loadMarket() {
       if (tab !== "roster" || !database || !activeSave || !dashboard) return;
       try {
+        setMarketError("");
         const season = numberField(dashboard.career, "current_season", 1);
+        const targetSeason = season + 1;
         const band = TIER_CONFIG[activeSave.tier].driverAge;
+        const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;", [String(dashboard.team.team_id), targetSeason, targetSeason]);
+        if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
+          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
+          return;
+        }
         const seatRows = await database.query(
           "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;",
           [String(dashboard.team.team_id), season, season],
@@ -366,7 +374,7 @@ export default function CareerMode() {
              )
            ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
            LIMIT 100;`,
-          [activeSave.careerId, band.min, band.max, season, season],
+          [activeSave.careerId, Math.max(0, band.min - 1), band.max - 1, targetSeason, targetSeason],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
@@ -374,7 +382,7 @@ export default function CareerMode() {
             const first = rows[0];
             setMarketDriverId(first ? field(first, "driver_id") : "");
             if (first) {
-              const salary = Math.max(1, Math.round(numberField(first, "market_value") * 0.12 * (1 + 0.1 * (numberField(first, "ambition", 50) - 50) / 50)));
+              const salary = calculateDriverAskingSalary({ marketValue: numberField(first, "market_value"), ambition: numberField(first, "ambition", 50), demandFactor: generateDriverDemandFactor({ worldSeed: String(dashboard.career.world_seed ?? ""), season: targetSeason, driverId: field(first, "driver_id") }) });
               setMarketSalary(String(salary));
             }
           }
@@ -561,7 +569,7 @@ export default function CareerMode() {
         careerId: activeSave.careerId,
         teamId: String(dashboard.team.team_id),
         driverId: marketDriverId,
-        startSeason: numberField(dashboard.career, "current_season", 1),
+        startSeason: numberField(dashboard.career, "current_season", 1) + 1,
         durationSeasons: Number(marketDuration),
         offeredSalary: Number(marketSalary),
         signingBonus: Number(marketBonus),
@@ -669,7 +677,7 @@ export default function CareerMode() {
         </article>
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>TRANSFER MARKET</small><h2>Recruit a driver</h2></div><span>{marketDrivers.length} eligible drivers</span></div>
-          <p className="muted-text">Hanya driver tanpa kontrak aktif di season ini dan sesuai band umur tier yang ditampilkan. Engine akan mengevaluasi gaji, reputasi, role, durasi, bonus, kas, dan cooldown negosiasi.</p>
+          <p className="muted-text">Daftar berisi free agent dan driver academy yang memenuhi band umur untuk season berikutnya. Kontrak baru dimulai pada season berikutnya agar grid berjalan tidak berubah. Tim harus memiliki kursi kosong.</p>
           {!marketSeatsAvailable && <p className="inline-error">Dua kursi race saat ini sudah terisi. Rekrutmen akan aktif saat ada kursi kosong; aturan biaya pemutusan kontrak belum didefinisikan di dokumen final.</p>}
           {marketError && <p className="inline-error">{marketError}</p>}
           {marketResult && <div className={marketResult.decision === "accepted" ? "notice success" : "notice"}>
@@ -684,7 +692,8 @@ export default function CareerMode() {
               setMarketDriverId(id);
               const candidate = marketDrivers.find((row) => field(row, "driver_id") === id);
               if (candidate) {
-                const salary = Math.max(1, Math.round(numberField(candidate, "market_value") * 0.12 * (1 + 0.1 * (numberField(candidate, "ambition", 50) - 50) / 50)));
+                const targetSeason = numberField(dashboard.career, "current_season", 1) + 1;
+                const salary = calculateDriverAskingSalary({ marketValue: numberField(candidate, "market_value"), ambition: numberField(candidate, "ambition", 50), demandFactor: generateDriverDemandFactor({ worldSeed: String(dashboard.career.world_seed ?? ""), season: targetSeason, driverId: id }) });
                 setMarketSalary(String(salary));
               }
               setMarketResult(null);
