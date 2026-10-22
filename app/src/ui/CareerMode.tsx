@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type RaceResult } from "../core/RaceEngine";
-import { simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
+import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
@@ -29,8 +29,6 @@ type DashboardData = {
 type Tab = "overview" | "calendar" | "roster" | "staff" | "sponsors" | "finance" | "standings";
 
 const SAVE_INDEX_KEY = "paddock-life-save-slots-v1";
-const POINTS: Readonly<Record<number, number>> = { 1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 2, 10: 1 };
-const SPRINT_POINTS: Readonly<Record<number, number>> = { 1: 8, 2: 7, 3: 6, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1 };
 const TIER_PICKER = [5, 4, 3, 2, 1] as const;
 
 function readSaveSlots(): SaveSlot[] {
@@ -204,7 +202,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       for (const row of orderedSprint) {
         const teamId = teamByDriver.get(row.driverId);
         if (!teamId) throw new Error("Tim driver sprint tidak ditemukan.");
-        const points = SPRINT_POINTS[row.position] ?? 0;
+        const points = calculateSprintRacePoints(row.position);
         await database.run(
           "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
           [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
@@ -215,7 +213,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       const sprintTeamPoints = new Map<string, number>();
       for (const row of orderedSprint) {
         const teamId = teamByDriver.get(row.driverId)!;
-        sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + (SPRINT_POINTS[row.position] ?? 0));
+        sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + calculateSprintRacePoints(row.position));
       }
       for (const [teamId, points] of sprintTeamPoints) {
         await upsertTeamStanding(database, tier, String(race.race_id) + "_sprint", teamId, points);
@@ -225,8 +223,8 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     for (const row of orderedRace) {
       const teamId = teamByDriver.get(row.driverId);
       if (!teamId) throw new Error("Tim driver race tidak ditemukan.");
-      const points = POINTS[row.position] ?? 0;
       const fastestLap = fastestRaceDrivers.has(row.driverId) ? 1 : 0;
+      const points = calculateMainRacePoints(tier, row.position, fastestLap === 1);
       await database.run(
         "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
         [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
@@ -239,7 +237,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     for (const row of orderedRace) {
       const teamId = teamByDriver.get(row.driverId)!;
       const current = teamPoints.get(teamId) ?? { points: 0, wins: 0, podiums: 0 };
-      current.points += POINTS[row.position] ?? 0;
+      current.points += calculateMainRacePoints(tier, row.position, fastestRaceDrivers.has(row.driverId));
       if (row.position === 1) current.wins += 1;
       if (row.position <= 3) current.podiums += 1;
       teamPoints.set(teamId, current);
@@ -483,8 +481,8 @@ export default function CareerMode() {
         <article className="career-panel"><small>CAR DEVELOPMENT</small><h2>Season 1</h2><p className="muted-text">Riset, facility upgrades, dan kontrak akan dibuka setelah sistem season dan ekonomi lengkap.</p></article>
         {lastRace && <>
           <article className="career-panel wide-panel"><small>QUALIFYING CLASSIFICATION</small><h2>Starting grid</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>GRID</th><th>DRIVER</th><th>BEST LAP</th></tr></thead><tbody>{[...lastRace.qualifying.classification].sort((a,b)=>a.gridPosition-b.gridPosition).map((row) => <tr key={row.driverId}><td>{row.gridPosition}</td><td>{row.driverName}</td><td>{row.bestLapSeconds.toFixed(3)}s</td></tr>)}</tbody></table></div></article>
-          {lastRace.sprint && <article className="career-panel wide-panel"><small>SPRINT CLASSIFICATION · {lastRace.sprintLaps} LAPS</small><h2>Sprint result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.sprint.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{SPRINT_POINTS[row.position] ?? 0}</td></tr>)}</tbody></table></div></article>}
-          <article className="career-panel wide-panel"><small>RACE CLASSIFICATION</small><h2>Race result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.race.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{POINTS[row.position] ?? 0}</td></tr>)}</tbody></table></div></article>
+          {lastRace.sprint && <article className="career-panel wide-panel"><small>SPRINT CLASSIFICATION · {lastRace.sprintLaps} LAPS</small><h2>Sprint result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.sprint.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{calculateSprintRacePoints(row.position)}</td></tr>)}</tbody></table></div></article>}
+          <article className="career-panel wide-panel"><small>RACE CLASSIFICATION</small><h2>Race result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.race.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{calculateMainRacePoints(activeSave.tier, row.position, lastRace.fastestLapDriverIds.includes(row.driverId))}</td></tr>)}</tbody></table></div></article>
         </>}
       </section>}
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
