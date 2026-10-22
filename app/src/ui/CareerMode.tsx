@@ -115,12 +115,12 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
 }
 
 async function upsertDriverStanding(
-  database: IDatabase, tier: TierId, raceId: string, driverId: string,
+  database: IDatabase, tier: TierId, season: number, raceId: string, driverId: string,
   points: number, wins = 0, podiums = 0, fastestLaps = 0,
 ): Promise<void> {
   const prior = await database.query(
-    "SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND driver_id = ? AND team_id IS NULL;",
-    ["T" + tier, driverId],
+    "SELECT standing_id FROM standings WHERE season = ? AND division_id = ? AND driver_id = ? AND team_id IS NULL;",
+    [season, "T" + tier, driverId],
   );
   if (prior[0]) {
     await database.run(
@@ -129,19 +129,19 @@ async function upsertDriverStanding(
     );
   } else {
     await database.run(
-      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
-      [raceId + "_drv_" + driverId, "T" + tier, driverId, points, wins, podiums, fastestLaps],
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
+      [raceId + "_drv_" + driverId, season, "T" + tier, driverId, points, wins, podiums, fastestLaps],
     );
   }
 }
 
 async function upsertTeamStanding(
-  database: IDatabase, tier: TierId, raceId: string, teamId: string,
+  database: IDatabase, tier: TierId, season: number, raceId: string, teamId: string,
   points: number, wins = 0, podiums = 0,
 ): Promise<void> {
   const prior = await database.query(
-    "SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND team_id = ? AND driver_id IS NULL;",
-    ["T" + tier, teamId],
+    "SELECT standing_id FROM standings WHERE season = ? AND division_id = ? AND team_id = ? AND driver_id IS NULL;",
+    [season, "T" + tier, teamId],
   );
   if (prior[0]) {
     await database.run(
@@ -150,16 +150,21 @@ async function upsertTeamStanding(
     );
   } else {
     await database.run(
-      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
-      [raceId + "_team_" + teamId, "T" + tier, teamId, points, wins, podiums],
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
+      [raceId + "_team_" + teamId, season, "T" + tier, teamId, points, wins, podiums],
     );
   }
 }
 
 async function simulateNextRace(database: IDatabase, careerId: string, tier: TierId, seed: string): Promise<RaceWeekendResult> {
+  const careerStateRows = await database.query("SELECT current_season, current_division_tier FROM career WHERE career_id = ?;", [careerId]);
+  const careerState = careerStateRows[0];
+  if (!careerState) throw new Error("Career tidak ditemukan.");
+  const season = numberField(careerState, "current_season", 1);
+  const playerTier = numberField(careerState, "current_division_tier", tier);
   const raceRows = await database.query(
-    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = 1 AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
-    ["T" + tier],
+    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
+    ["T" + tier, season],
   );
   const race = raceRows[0];
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
@@ -167,11 +172,11 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.aggression,
       t.team_id, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
      FROM drivers d
-     JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= 1 AND dc.end_season >= 1
+     JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
      JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0
-     JOIN cars c ON c.team_id = t.team_id AND c.season = 1
+     JOIN cars c ON c.team_id = t.team_id AND c.season = ?
      ORDER BY t.team_id, d.driver_id;`,
-    [careerId, "T" + tier],
+    [season, season, careerId, "T" + tier, season],
   );
   if (raceDrivers.length !== TIER_CONFIG[tier].gridSize) {
     throw new Error("Grid race harus berisi " + TIER_CONFIG[tier].gridSize + " driver, tetapi ditemukan " + raceDrivers.length + ".");
@@ -216,7 +221,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
           [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
             weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compound, points, row.cumulativeTimeSeconds],
         );
-        await upsertDriverStanding(database, tier, String(race.race_id) + "_sprint", row.driverId, points);
+        await upsertDriverStanding(database, tier, season, String(race.race_id) + "_sprint", row.driverId, points);
       }
       const sprintTeamPoints = new Map<string, number>();
       for (const row of orderedSprint) {
@@ -224,7 +229,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + calculateSprintRacePoints(row.position));
       }
       for (const [teamId, points] of sprintTeamPoints) {
-        await upsertTeamStanding(database, tier, String(race.race_id) + "_sprint", teamId, points);
+        await upsertTeamStanding(database, tier, season, String(race.race_id) + "_sprint", teamId, points);
       }
     }
 
@@ -276,16 +281,16 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         const transactionId = String(race.race_id) + "_" + cost.category + "_" + String(teamRow.team_id);
         await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [balance, String(teamRow.team_id)]);
         await database.run(
-          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, 1, ?, 'expense', ?, ?, ?);",
-          [transactionId, String(teamRow.team_id), Number(race.round), cost.category, cost.amount, balance],
+          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, ?, 'expense', ?, ?, ?);",
+          [transactionId, String(teamRow.team_id), season, Number(race.round), cost.category, cost.amount, balance],
         );
       }
     }
-    await advanceCareerDevelopmentProjectsAfterRace(database, {
-      careerId, tier, season: 1, round: Number(race.round),
+    if (tier === playerTier) await advanceCareerDevelopmentProjectsAfterRace(database, {
+      careerId, tier, season, round: Number(race.round),
     });
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
-    await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
+    if (tier === playerTier) await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
   return weekend;
 }
