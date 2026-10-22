@@ -15,6 +15,7 @@ describe("document-backed tier configuration", () => {
       248_000_000, 98_000_000, 38_000_000, 15_000_000, 6_000_000, 3_000_000,
     ]);
     expect(tiers.map((tier) => TIER_CONFIG[tier].paceFactor)).toEqual([1, 0.96, 0.9, 0.84, 0.7, 0.6]);
+    expect(tiers.map((tier) => TIER_CONFIG[tier].roundsPerSeason)).toEqual([24, 24, 18, 12, 10, 8]);
   });
 
   it("contains the documented tyre, incident, reliability, and weekend multipliers", () => {
