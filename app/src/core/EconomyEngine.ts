@@ -1,10 +1,10 @@
 import { TIER_CONFIG, type TierId } from "./GameConfig";
 
-export type EconomyTierId = Exclude<TierId, 6>;
+export type EconomyTierId = TierId;
 export type DevelopmentProjectSize = "minor" | "standard" | "major";
 export type CashPackSize = "S" | "M" | "L" | "XL";
 
-const SPONSOR_SLOTS: Readonly<Record<EconomyTierId, number>> = {
+const SPONSOR_SLOTS: Readonly<Record<Exclude<TierId, 6>, number>> = {
   1: 5, 2: 4, 3: 4, 4: 3, 5: 3,
 };
 
@@ -101,7 +101,7 @@ export function calculateRevenueTarget(tier: EconomyTierId, averageDriverFanPopu
   };
 }
 
-export function maximumActiveSponsors(tier: EconomyTierId): number {
+export function maximumActiveSponsors(tier: Exclude<TierId, 6>): number {
   return SPONSOR_SLOTS[tier];
 }
 

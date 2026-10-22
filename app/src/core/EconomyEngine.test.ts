@@ -63,6 +63,15 @@ describe("documented economy formulas", () => {
     expect(calculateAdReward({ tier: 5, viewsThisSeason: 0, viewsToday: 0, secondsSincePreviousView: 4 }).allowed).toBe(false);
   });
 
+  it("supports RB-scaled Tier 6 operating costs and finance formulas", () => {
+    expect(calculateOperatingCostPerRound(6)).toBe(93_750);
+    expect(calculateEntryFee(6)).toBe(240_000);
+    expect(calculateMinimumRAndDBudget(6)).toBe(450_000);
+    expect(calculateOverdraftLimit(6)).toBe(750_000);
+    expect(calculateCashPackValue(6, "S")).toBe(90_000);
+    expect(calculatePrizeMoney(6, 1)).toBe(1_944_000);
+  });
+
   it("applies overdraft rules without allowing negative cash recruitment", () => {
     expect(calculateBalanceAfterTransaction({ currentBalance: 100, amount: -50, tier: 5 })).toEqual({
       balanceAfter: 50, withinOverdraft: true, canRecruitOrDevelop: true,
