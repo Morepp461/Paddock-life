@@ -145,7 +145,7 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
   }
   if (score.decision === "accepted") {
     const contractId = "contract_" + hashSeed([
-      context.career.world_seed, input.careerId, input.teamId, input.driverId,
+      String(context.career.world_seed), input.careerId, input.teamId, input.driverId,
       input.startSeason, input.durationSeasons, input.offeredSalary,
     ]).toString(16).padStart(8, "0");
     const endSeason = input.startSeason + input.durationSeasons - 1;
