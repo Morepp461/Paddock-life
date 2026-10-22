@@ -30,7 +30,10 @@ describe("local schema migrations", () => {
       "schema_migrations",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }]);
+    const circuitColumns = await database.query("PRAGMA table_info(circuits);");
+    expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
+    expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");
   });
 
   it("enforces documented career mode and tier constraints", async () => {
