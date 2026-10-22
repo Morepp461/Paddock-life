@@ -4,6 +4,9 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageDriverPayroll, calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
+import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
+import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
+import { calculateDevelopmentProjectCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
 import type { NamePoolPayload } from "../seed/NamePoolLoader";
@@ -24,9 +27,9 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[];
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[];
 };
-type Tab = "overview" | "calendar" | "roster" | "staff" | "sponsors" | "finance" | "standings";
+type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
 const SAVE_INDEX_KEY = "paddock-life-save-slots-v1";
 const TIER_PICKER = [5, 4, 3, 2, 1] as const;
@@ -90,7 +93,7 @@ async function loadCatalog(): Promise<Catalog> {
   };
 }
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
-  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements] = await Promise.all([
+  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
     database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]),
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
@@ -101,9 +104,12 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     database.query("SELECT type, category, amount, balance_after, season, race, occurred_at FROM finances WHERE team_id = ? ORDER BY occurred_at DESC LIMIT 30;", [playerTeamId]),
     database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = 1 AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", ["T" + tier]),
     database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = 1;", [careerId, playerTeamId]),
+    database.query("SELECT * FROM cars WHERE team_id = ? AND season = 1 LIMIT 1;", [playerTeamId]),
+    database.query("SELECT * FROM development_projects WHERE career_id = ? AND team_id = ? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_round DESC;", [careerId, playerTeamId]),
+    database.query("SELECT * FROM development_history WHERE career_id = ? AND team_id = ? ORDER BY season DESC, round DESC LIMIT 30;", [careerId, playerTeamId]),
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
-  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements };
+  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, car: cars[0] ?? null, developmentProjects, developmentHistory };
 }
 
 async function upsertDriverStanding(
@@ -273,6 +279,9 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         );
       }
     }
+    await advanceCareerDevelopmentProjectsAfterRace(database, {
+      careerId, tier, season: 1, round: Number(race.round),
+    });
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
     await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
@@ -305,6 +314,10 @@ export default function CareerMode() {
   const [runningRace, setRunningRace] = useState(false);
   const [settlingSeason, setSettlingSeason] = useState(false);
   const [settlementError, setSettlementError] = useState("");
+  const [developmentProjectId, setDevelopmentProjectId] = useState("E01");
+  const [developmentSize, setDevelopmentSize] = useState<DevelopmentProjectSize>("minor");
+  const [developmentBusy, setDevelopmentBusy] = useState(false);
+  const [developmentError, setDevelopmentError] = useState("");
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
@@ -425,6 +438,45 @@ export default function CareerMode() {
     }
   }
 
+  async function startDevelopment() {
+    if (!database || !activeSave || !dashboard) return;
+    setDevelopmentBusy(true); setDevelopmentError("");
+    try {
+      await startCareerDevelopmentProject(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        tier: activeSave.tier,
+        season: numberField(dashboard.career, "current_season", 1),
+        round: numberField(dashboard.career, "current_race", 1),
+        projectCatalogId: developmentProjectId,
+        size: developmentSize,
+        worldSeed: String(dashboard.career.world_seed),
+      });
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setDevelopmentError(caught instanceof Error ? caught.message : "Project development gagal dimulai.");
+    } finally { setDevelopmentBusy(false); }
+  }
+
+  async function cancelDevelopment(projectInstanceId: string) {
+    if (!database || !activeSave || !dashboard) return;
+    setDevelopmentBusy(true); setDevelopmentError("");
+    try {
+      const refund = await cancelCareerDevelopmentProject(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        projectInstanceId,
+        season: numberField(dashboard.career, "current_season", 1),
+        round: numberField(dashboard.career, "current_race", 1),
+        tier: activeSave.tier,
+      });
+      setDevelopmentError("Project dibatalkan. Refund: " + formatCash(refund) + ".");
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setDevelopmentError(caught instanceof Error ? caught.message : "Project tidak dapat dibatalkan.");
+    } finally { setDevelopmentBusy(false); }
+  }
+
   async function settleSeason() {
     if (!database || !activeSave || !dashboard) return;
     setSettlingSeason(true); setSettlementError("");
@@ -459,9 +511,26 @@ export default function CareerMode() {
   if (dashboard && activeSave) {
     const team = dashboard.team;
     const nextRace = dashboard.races.find((race) => field(race, "status") === "scheduled");
+    const developmentOptions = DEVELOPMENT_CATALOG.filter((project) => activeSave.tier >= project.minimumTier && activeSave.tier <= project.maximumTier);
+    const selectedDevelopment = developmentOptions.find((project) => project.id === developmentProjectId) ?? developmentOptions[0];
+    const chiefEngineer = dashboard.staff.find((member) => field(member, "role") === "Chief Engineer");
+    const selectedFacilityLevel = selectedDevelopment
+      ? numberField(team, selectedDevelopment.category === "aero" ? "aero_center_level" : selectedDevelopment.category === "engine" ? "engine_dept_level" : selectedDevelopment.category === "chassis" ? "chassis_level" : "rnd_level", 1)
+      : 1;
+    const developmentEligibility = selectedDevelopment ? validateDevelopmentSelection({
+      projectId: selectedDevelopment.id, tier: activeSave.tier, size: developmentSize,
+      chiefEngineerSkill: numberField(chiefEngineer, "skill"), facilityLevel: selectedFacilityLevel,
+    }) : { eligible: false, reasons: ["Tidak ada project yang tersedia untuk tier ini."] };
+    const developmentReasons = [...developmentEligibility.reasons];
+    if (!chiefEngineer) developmentReasons.unshift("Tim belum memiliki Chief Engineer.");
+    if (developmentSize === "major" && numberField(team, "rnd_level", 1) < 6) developmentReasons.push("Major project membutuhkan R&D Department minimal level 6.");
+    if (numberField(team, "cash") < 0) developmentReasons.push("Development tidak bisa dimulai saat saldo tim negatif.");
+    if (dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length >= Math.ceil(numberField(team, "rnd_level", 1) / 2)) {
+      developmentReasons.push("Semua slot development sedang terpakai.");
+    }
     const tabs: { id: Tab; label: string }[] = [
       { id: "overview", label: "Overview" }, { id: "calendar", label: "Calendar" }, { id: "roster", label: "Drivers" },
-      { id: "staff", label: "Staff" }, { id: "sponsors", label: "Sponsors" }, { id: "finance", label: "Finance" }, { id: "standings", label: "Standings" },
+      { id: "staff", label: "Staff" }, { id: "development", label: "Development" }, { id: "sponsors", label: "Sponsors" }, { id: "finance", label: "Finance" }, { id: "standings", label: "Standings" },
     ];
     return <main className="career-mode-root">
       <header className="career-header">
