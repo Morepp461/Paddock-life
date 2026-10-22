@@ -37,18 +37,22 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 export function validateCircuitSeed(payload: unknown): asserts payload is ColumnarSeedPayload {
-  if (!isRecord(payload) || payload.schemaVersion !== 1 || !Array.isArray(payload.columns) || !Array.isArray(payload.rows)) {
+  if (!isRecord(payload)) throw new Error("Format seed sirkuit tidak valid.");
+  const schemaVersion = payload.schemaVersion;
+  const columns = payload.columns;
+  const rows = payload.rows;
+  if (schemaVersion !== 1 || !Array.isArray(columns) || !Array.isArray(rows)) {
     throw new Error("Format seed sirkuit tidak valid atau versinya tidak didukung.");
   }
-  if (payload.columns.length !== CIRCUIT_SOURCE_COLUMNS.length ||
-      !CIRCUIT_SOURCE_COLUMNS.every((column, index) => payload.columns[index] === column)) {
+  if (columns.length !== CIRCUIT_SOURCE_COLUMNS.length ||
+      !CIRCUIT_SOURCE_COLUMNS.every((column, index) => columns[index] === column)) {
     throw new Error("Kolom seed sirkuit tidak cocok dengan schema yang diharapkan.");
   }
-  if (payload.rows.length !== 30) throw new Error("Seed sirkuit harus berisi tepat 30 sirkuit.");
+  if (rows.length !== 30) throw new Error("Seed sirkuit harus berisi tepat 30 sirkuit.");
 
   const ids = new Set<string>();
   const names = new Set<string>();
-  for (const [rowIndex, row] of payload.rows.entries()) {
+  for (const [rowIndex, row] of rows.entries()) {
     if (!Array.isArray(row) || row.length !== CIRCUIT_SOURCE_COLUMNS.length) {
       throw new Error(`Baris sirkuit ${rowIndex + 1} memiliki jumlah kolom yang salah.`);
     }
