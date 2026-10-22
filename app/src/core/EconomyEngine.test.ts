@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateAdReward,
   calculateAverageDriverPayroll,
+  calculateTeamDriverPayroll,
   calculateAverageStaffPayroll,
   calculateBalanceAfterTransaction,
   calculateCashPackValue,
@@ -26,6 +27,8 @@ describe("documented economy formulas", () => {
     expect(calculateEntryFee(5)).toBe(480_000);
     expect(calculateMinimumRAndDBudget(5)).toBe(900_000);
     expect(calculateAverageDriverPayroll(5)).toBe(720_000);
+    expect(calculateTeamDriverPayroll(5)).toBe(1_440_000);
+    expect(calculateTeamDriverPayroll(3)).toBe(9_120_000);
     expect(calculateAverageStaffPayroll(5)).toBe(900_000);
     expect(calculateOverdraftLimit(5)).toBe(1_500_000);
   });
