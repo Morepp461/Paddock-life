@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
@@ -544,6 +544,38 @@ export default function CareerMode() {
     } catch (caught) {
       setDevelopmentError(caught instanceof Error ? caught.message : "Project tidak dapat dibatalkan.");
     } finally { setDevelopmentBusy(false); }
+  }
+
+  async function submitDriverOffer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!database || !activeSave || !dashboard || !marketDriverId) return;
+    setMarketBusy(true); setMarketError(""); setMarketResult(null);
+    try {
+      const result = await offerDriverContract(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        driverId: marketDriverId,
+        startSeason: numberField(dashboard.career, "current_season", 1),
+        durationSeasons: Number(marketDuration),
+        offeredSalary: Number(marketSalary),
+        signingBonus: Number(marketBonus),
+        role: marketRole,
+      });
+      setMarketResult(result);
+      if (result.decision === "counter-offer" && result.counterOffer) {
+        setMarketSalary(String(result.counterOffer.salary));
+        setMarketDuration(String(result.counterOffer.durationSeasons));
+      }
+      if (result.decision === "accepted") {
+        setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+        setMarketDrivers((rows) => rows.filter((row) => field(row, "driver_id") !== marketDriverId));
+        setMarketDriverId("");
+      }
+    } catch (caught) {
+      setMarketError(caught instanceof Error ? caught.message : "Penawaran kontrak gagal diproses.");
+    } finally {
+      setMarketBusy(false);
+    }
   }
 
   async function settleSeason() {
