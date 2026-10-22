@@ -265,6 +265,14 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_standings_division_season ON standings(division_id, season, points DESC);
     `,
   },
+  {
+    version: 2,
+    description: "preserve source circuit standard laps and estimated lap time",
+    sql: `
+      ALTER TABLE circuits ADD COLUMN standard_laps INTEGER NOT NULL DEFAULT 0 CHECK (standard_laps >= 0);
+      ALTER TABLE circuits ADD COLUMN estimated_lap_seconds REAL NOT NULL DEFAULT 0 CHECK (estimated_lap_seconds >= 0);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
