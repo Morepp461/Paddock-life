@@ -39,12 +39,13 @@ describe("atomic career world generation", () => {
 
       expect(result.selectedTier).toBe(3);
       expect(result.teamsCreated).toBe(72);
-      expect(result.driversCreated).toBe(174);
+      expect(result.driversCreated).toBe(270);
       expect(result.racesScheduled).toBeGreaterThan(0);
       expect(result.managersCreated).toBe(7);
       expect(await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 72 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM cars;")).toEqual([{ count: 72 }]);
-      expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 174 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 270 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND is_academy_driver = 1;", [result.careerId])).toEqual([{ count: 96 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM races;")).toEqual([{ count: result.racesScheduled }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND is_player_team = 1;", [result.careerId])).toEqual([{ count: 1 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM sponsor_offers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: result.sponsorOffersCreated }]);
