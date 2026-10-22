@@ -14,8 +14,6 @@ export interface RaceDriverInput {
   readonly tyreManagement: number;
   readonly mechanicalGrip: number;
   readonly compound: TyreCompound;
-  /** Must be calibrated in game_config and validated by tier simulation. */
-  readonly tierWearMultiplier: number;
 }
 
 export interface RaceInput {
@@ -80,9 +78,6 @@ function validateInput(input: RaceInput): void {
     if (!Number.isFinite(driver.formModifier) || driver.formModifier < -2 || driver.formModifier > 2) {
       throw new RangeError("FormModifier harus berada pada rentang -2 sampai +2.");
     }
-    if (!Number.isFinite(driver.tierWearMultiplier) || driver.tierWearMultiplier <= 0) {
-      throw new RangeError("TierWearMultiplier harus berupa angka positif yang valid.");
-    }
   }
 }
 
@@ -105,7 +100,14 @@ export function simulateRace(input: RaceInput): RaceResult {
   validateInput(input);
   const tierConfig = TIER_CONFIG[input.tier];
   const fuelFactor = input.tier >= 5 ? 0.4 : 1;
+  const allowedCompounds: readonly string[] = [
+    ...tierConfig.allowedDryCompounds,
+    ...tierConfig.allowedWetCompounds,
+  ];
   const states: MutableDriverState[] = input.drivers.map((driver) => {
+    if (!allowedCompounds.includes(driver.compound)) {
+      throw new Error(`Compound ${driver.compound} tidak tersedia untuk Tier ${input.tier}.`);
+    }
     const compoundResult = getCompoundPaceResult({ compound: driver.compound, trackCondition: input.trackCondition });
     if (!compoundResult.usable) {
       throw new Error(`Compound ${driver.compound} tidak dapat dipakai pada kondisi ${input.trackCondition}.`);
@@ -124,7 +126,7 @@ export function simulateRace(input: RaceInput): RaceResult {
         trackTemperatureCelsius: input.trackTemperatureCelsius,
         mechanicalGrip: driver.mechanicalGrip,
         driverTyreManagement: driver.tyreManagement,
-        tierWearMultiplier: driver.tierWearMultiplier,
+        tierWearMultiplier: tierConfig.tyreWearMultiplier,
       }),
       cumulativeTimeSeconds: 0,
       tyreWearPercent: 0,
