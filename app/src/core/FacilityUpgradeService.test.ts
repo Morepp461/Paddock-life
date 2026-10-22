@@ -45,7 +45,7 @@ describe("facility upgrade service", () => {
       expect(Number((await database.query("SELECT rnd_level FROM teams WHERE team_id = ?;", [career.teamId]))[0]!.rnd_level)).toBe(result.newLevel);
       expect(Number((await database.query("SELECT cash FROM teams WHERE team_id = ?;", [career.teamId]))[0]!.cash)).toBe(Number(before[0]!.cash) - result.cost);
       expect(await database.query("SELECT amount, category FROM finances WHERE transaction_id = ?;", [
-        "facility_" + career.teamId + "_S1_rnd_L2",
+        "facility_" + career.teamId + "_S1_rnd_L" + result.newLevel,
       ])).toEqual([{ amount: -result.cost, category: "facility-upgrade" }]);
     } finally {
       await database.close();
