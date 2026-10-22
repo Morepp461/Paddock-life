@@ -35,6 +35,7 @@ async function setup() {
     takeoverTeamId: "D3-01",
   }, { fetcher: seedFetcher, managerGender: "male" });
   const team = (await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [career.careerId]))[0]!;
+  await database.run("UPDATE driver_contracts SET end_season = 1 WHERE team_id = ? AND start_season <= 2 AND end_season >= 2;", [String(team.team_id)]);
   const tier = TIER_CONFIG[3];
   const driver = (await database.query(
     "SELECT d.driver_id, d.market_value, d.ambition FROM drivers d WHERE d.career_id = ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.market_value > 0 AND d.age BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM driver_contracts dc WHERE dc.driver_id = d.driver_id AND dc.start_season <= 2 AND dc.end_season >= 2) ORDER BY d.driver_id LIMIT 1;",
