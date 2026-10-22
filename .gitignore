@@ -1,0 +1,12 @@
+node_modules/
+app/dist/
+app/android/
+app/ios/
+coverage/
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+local.properties
+.DS_Store
