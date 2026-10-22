@@ -1,5 +1,6 @@
 import { DIFFICULTY_MULTIPLIERS, FINANCE_GRADE_MULTIPLIERS, INITIAL_DISTRIBUTIONS, PERFORMANCE_GRADE_OFFSETS, clamp } from "../core/InitialDistributions";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
+import { assertDriverEligible } from "../core/DriverEligibilityService";
 import { SeededRandom } from "../core/SeededRandom";
 import { hashSeed, sampleBoundedNormal as sampleDelta } from "../core/RandomDistributions";
 import { generateSeasonCalendar } from "../core/SeasonCalendar";
@@ -122,6 +123,7 @@ async function insertDriver(
   const age = input.academy
     ? Math.round(sampleNormalBounded(input.rng, Math.min(dist.driverAgeMean, 16), dist.driverAgeSd, 8, 17))
     : Math.round(sampleNormalBounded(input.rng, dist.driverAgeMean, dist.driverAgeSd, dist.minDriverAge, dist.maxDriverAge));
+  if (!input.academy) assertDriverEligible({ age, tier: input.tier });
   const overall = sampleNormalBounded(input.rng, dist.driverOverallMean, dist.driverOverallSd, 1, 99);
   const potentialRoom = age <= 13 ? 20 + input.rng.next() * 20 : age <= 17 ? 12 + input.rng.next() * 16 : age <= 23 ? 6 + input.rng.next() * 10 : age <= 29 ? 2 + input.rng.next() * 6 : input.rng.next() * 3;
   const values = {
