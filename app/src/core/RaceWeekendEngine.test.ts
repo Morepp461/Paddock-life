@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
+import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
 
 function drivers(count: number): RaceWeekendDriver[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -60,5 +60,23 @@ describe("race weekend orchestration", () => {
     });
     expect(result.sprint).toBeNull();
     expect(result.sprintLaps).toBeNull();
+  });
+});
+
+describe("championship points", () => {
+  it("awards fastest lap only to a top-ten finisher in Tiers 1–3", () => {
+    expect(calculateMainRacePoints(1, 1, true)).toBe(26);
+    expect(calculateMainRacePoints(3, 10, true)).toBe(2);
+    expect(calculateMainRacePoints(3, 11, true)).toBe(0);
+    expect(calculateMainRacePoints(4, 1, true)).toBe(25);
+    expect(calculateMainRacePoints(5, 10, true)).toBe(1);
+    expect(calculateMainRacePoints(2, 2, false)).toBe(18);
+  });
+
+  it("awards sprint points P1–P8 only without a fastest-lap bonus", () => {
+    expect(Array.from({ length: 8 }, (_, index) => calculateSprintRacePoints(index + 1)))
+      .toEqual([8, 7, 6, 5, 4, 3, 2, 1]);
+    expect(calculateSprintRacePoints(9)).toBe(0);
+    expect(() => calculateSprintRacePoints(0)).toThrow("integer positif");
   });
 });
