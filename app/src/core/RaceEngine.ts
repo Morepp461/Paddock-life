@@ -2,6 +2,7 @@ import { calculateBaseLapSeconds, calculatePerformanceDeltaSeconds, TIER_CONFIG,
 import { calculateWearPerLap, calculateWearPenaltySeconds, getCompoundPaceResult, type TrackCondition, type TyreCompound } from "./TyreEngine";
 import { hashSeed, sampleBoundedNormal } from "./RandomDistributions";
 import { SeededRandom } from "./SeededRandom";
+import { calculateWeatherDeltaSeconds } from "./WeatherEngine";
 
 export interface RaceDriverInput {
   readonly id: string;
@@ -14,6 +15,7 @@ export interface RaceDriverInput {
   readonly tyreManagement: number;
   readonly mechanicalGrip: number;
   readonly compound: TyreCompound;
+  readonly weatherAdaptation?: number;
 }
 
 export interface RaceInput {
@@ -26,6 +28,8 @@ export interface RaceInput {
   readonly trackAbrasion: number;
   readonly trackTemperatureCelsius: number;
   readonly trackCondition: TrackCondition;
+  /** Optional per-lap conditions supplied by the weather transition system. */
+  readonly weatherByLap?: readonly TrackCondition[];
   readonly referenceSetupScore: number;
   readonly drivers: readonly RaceDriverInput[];
 }
@@ -39,6 +43,7 @@ export interface DriverLapResult {
   readonly tyreWearPercent: number;
   readonly position: number;
   readonly gapToLeaderSeconds: number;
+  readonly trackCondition: TrackCondition;
 }
 
 export interface RaceResult {
@@ -62,6 +67,7 @@ function validateInput(input: RaceInput): void {
     throw new RangeError("TrackAbrasion harus berada pada rentang 0–100.");
   }
   if (!Number.isFinite(input.trackTemperatureCelsius)) throw new RangeError("Suhu lintasan harus valid.");
+  if (input.weatherByLap && input.weatherByLap.length !== input.totalLaps) throw new RangeError("WeatherByLap harus memiliki satu kondisi untuk setiap lap.");
   assertScore("ReferenceSetupScore", input.referenceSetupScore);
   if (input.drivers.length < 2) throw new RangeError("Race membutuhkan minimal dua driver.");
   const ids = new Set<string>();
@@ -75,6 +81,7 @@ function validateInput(input: RaceInput): void {
     assertScore("Aggression", driver.aggression);
     assertScore("TyreManagement", driver.tyreManagement);
     assertScore("MechanicalGrip", driver.mechanicalGrip);
+    if (driver.weatherAdaptation !== undefined) assertScore("WeatherAdaptation", driver.weatherAdaptation);
     if (!Number.isFinite(driver.formModifier) || driver.formModifier < -2 || driver.formModifier > 2) {
       throw new RangeError("FormModifier harus berada pada rentang -2 sampai +2.");
     }
@@ -85,16 +92,14 @@ interface MutableDriverState {
   readonly input: RaceDriverInput;
   readonly baseLapSeconds: number;
   readonly performanceDeltaSeconds: number;
-  readonly compoundDeltaSeconds: number;
   readonly wearPerLap: number;
   cumulativeTimeSeconds: number;
   tyreWearPercent: number;
 }
 
 /**
- * Deterministic lap-by-lap race kernel. Weather transitions, pit strategy,
- * incidents, overtaking, and reliability are separate systems and are not
- * simulated by this first kernel.
+ * Deterministic lap-by-lap race kernel. Weather conditions can be supplied per lap;
+ * pit strategy, incidents, overtaking, and reliability remain separate systems.
  */
 export function simulateRace(input: RaceInput): RaceResult {
   validateInput(input);
@@ -108,7 +113,8 @@ export function simulateRace(input: RaceInput): RaceResult {
     if (!allowedCompounds.includes(driver.compound)) {
       throw new Error(`Compound ${driver.compound} tidak tersedia untuk Tier ${input.tier}.`);
     }
-    const compoundResult = getCompoundPaceResult({ compound: driver.compound, trackCondition: input.trackCondition });
+    const initialCondition = input.weatherByLap?.[0] ?? input.trackCondition;
+    const compoundResult = getCompoundPaceResult({ compound: driver.compound, trackCondition: initialCondition });
     if (!compoundResult.usable) {
       throw new Error(`Compound ${driver.compound} tidak dapat dipakai pada kondisi ${input.trackCondition}.`);
     }
@@ -118,7 +124,6 @@ export function simulateRace(input: RaceInput): RaceResult {
       performanceDeltaSeconds: calculatePerformanceDeltaSeconds(input.estimatedCircuitLapSeconds,
         { carScore: driver.carScore, driverScore: driver.driverScore, setupScore: driver.setupScore },
         { carScore: tierConfig.referenceCarScore, driverScore: tierConfig.referenceDriverOverall, setupScore: input.referenceSetupScore }),
-      compoundDeltaSeconds: compoundResult.deltaSecondsPerLap,
       wearPerLap: calculateWearPerLap({
         compound: driver.compound,
         trackAbrasion: input.trackAbrasion,
@@ -135,7 +140,15 @@ export function simulateRace(input: RaceInput): RaceResult {
 
   const laps: DriverLapResult[][] = [];
   for (let lap = 1; lap <= input.totalLaps; lap += 1) {
+    const trackCondition = input.weatherByLap?.[lap - 1] ?? input.trackCondition;
     const lapResults = states.map((state): Omit<DriverLapResult, "position" | "gapToLeaderSeconds"> => {
+      const compoundResult = getCompoundPaceResult({ compound: state.input.compound, trackCondition });
+      if (!compoundResult.usable) throw new Error(`Compound ${state.input.compound} tidak dapat dipakai pada kondisi ${trackCondition}.`);
+      const weatherDelta = calculateWeatherDeltaSeconds({
+        condition: trackCondition,
+        weatherAdaptation: state.input.weatherAdaptation ?? 0,
+        tyreMismatchDeltaSeconds: compoundResult.deltaSecondsPerLap,
+      });
       const rng = new SeededRandom(hashSeed([input.worldSeed, input.season, input.round, "race", lap, state.input.id]));
       const randomDelta = sampleBoundedNormal(rng, 0.15, 2.5);
       const formDelta = -state.input.formModifier * 0.05;
@@ -143,7 +156,7 @@ export function simulateRace(input: RaceInput): RaceResult {
       const wearPenalty = calculateWearPenaltySeconds(state.tyreWearPercent);
       const lapTimeSeconds = state.baseLapSeconds
         + state.performanceDeltaSeconds
-        + state.compoundDeltaSeconds
+        + weatherDelta
         + wearPenalty
         + fuelDelta
         + formDelta
@@ -157,6 +170,7 @@ export function simulateRace(input: RaceInput): RaceResult {
         lapTimeSeconds,
         cumulativeTimeSeconds: state.cumulativeTimeSeconds,
         tyreWearPercent: state.tyreWearPercent,
+        trackCondition,
       };
     });
     lapResults.sort((a, b) => a.cumulativeTimeSeconds - b.cumulativeTimeSeconds || a.driverId.localeCompare(b.driverId));
