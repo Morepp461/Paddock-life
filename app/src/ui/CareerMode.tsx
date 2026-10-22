@@ -656,7 +656,42 @@ export default function CareerMode() {
         </>}
       </section>}
       {tab === "calendar" && <section className="career-panel"><div className="panel-title"><div><small>SEASON 1</small><h2>Race calendar</h2></div><span>{dashboard.races.filter((race) => field(race, "status") === "completed").length}/{dashboard.races.length} completed</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROUND</th><th>CIRCUIT</th><th>LAPS</th><th>SPRINT</th><th>STATUS</th></tr></thead><tbody>{dashboard.races.map((race) => <tr key={field(race, "race_id")}><td>{field(race, "round")}</td><td>{field(race, "circuit_name")}<small>{field(race, "circuit_country")}</small></td><td>{field(race, "laps")}</td><td>{numberField(race, "has_sprint") ? "Yes" : "No"}</td><td><span className={field(race, "status") === "completed" ? "status-chip complete" : "status-chip"}>{field(race, "status")}</span></td></tr>)}</tbody></table></div></section>}
-      {tab === "roster" && <section className="career-panel"><div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div></section>}
+      {tab === "roster" && <section className="career-grid">
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>RACE TEAM</small><h2>Driver roster</h2></div><span>{dashboard.roster.length} drivers</span></div>
+          <div className="table-scroll"><table className="career-table"><thead><tr><th>DRIVER</th><th>AGE</th><th>PACE</th><th>QUALI</th><th>RACECRAFT</th><th>TYRE MGMT</th><th>SALARY</th></tr></thead><tbody>{dashboard.roster.map((driver) => <tr key={field(driver, "driver_id")}><td>{field(driver, "name")}<small>{field(driver, "nationality")}</small></td><td>{field(driver, "age")}</td><td>{numberField(driver, "pace").toFixed(1)}</td><td>{numberField(driver, "qualifying").toFixed(1)}</td><td>{numberField(driver, "racecraft").toFixed(1)}</td><td>{numberField(driver, "tyre_management").toFixed(1)}</td><td>{formatCash(numberField(driver, "salary"))}</td></tr>)}</tbody></table></div>
+        </article>
+        <article className="career-panel wide-panel">
+          <div className="panel-title"><div><small>TRANSFER MARKET</small><h2>Recruit a driver</h2></div><span>{marketDrivers.length} eligible drivers</span></div>
+          <p className="muted-text">Hanya driver tanpa kontrak aktif di season ini dan sesuai band umur tier yang ditampilkan. Engine akan mengevaluasi gaji, reputasi, role, durasi, bonus, kas, dan cooldown negosiasi.</p>
+          {marketError && <p className="inline-error">{marketError}</p>}
+          {marketResult && <div className={marketResult.decision === "accepted" ? "notice success" : "notice"}>
+            <strong>{marketResult.decision === "accepted" ? "Contract accepted" : marketResult.decision === "counter-offer" ? "Counter-offer received" : "Offer rejected"}</strong>
+            <p>Acceptance score {(marketResult.score * 100).toFixed(0)}% · Asking salary {formatCash(marketResult.askingSalary)}</p>
+            {marketResult.counterOffer && <p>Suggested salary {formatCash(marketResult.counterOffer.salary)} · {marketResult.counterOffer.durationSeasons} season(s)</p>}
+            {marketResult.rejectionReasons?.length ? <p>Reason: {marketResult.rejectionReasons.join(", ")}</p> : null}
+          </div>}
+          {marketDrivers.length ? <form className="contract-offer-form" onSubmit={(event) => void submitDriverOffer(event)}>
+            <label>Driver<select required value={marketDriverId} onChange={(event) => {
+              const id = event.target.value;
+              setMarketDriverId(id);
+              const candidate = marketDrivers.find((row) => field(row, "driver_id") === id);
+              if (candidate) {
+                const salary = Math.max(1, Math.round(numberField(candidate, "market_value") * 0.12 * (1 + 0.1 * (numberField(candidate, "ambition", 50) - 50) / 50)));
+                setMarketSalary(String(salary));
+              }
+              setMarketResult(null);
+            }}><option value="" disabled>Select driver</option>{marketDrivers.map((driver) => <option key={field(driver, "driver_id")} value={field(driver, "driver_id")}>{field(driver, "name")} · Age {field(driver, "age")} · Pace {numberField(driver, "pace").toFixed(0)}{numberField(driver, "is_academy_driver") ? " · Academy" : ""}</option>)}</select></label>
+            <div className="form-grid">
+              <label>Annual salary (¢p)<input type="number" min="1" step="1" required value={marketSalary} onChange={(event) => setMarketSalary(event.target.value)} /></label>
+              <label>Contract length<select value={marketDuration} onChange={(event) => setMarketDuration(event.target.value)}><option value="1">1 season</option><option value="2">2 seasons</option><option value="3">3 seasons</option><option value="4">4 seasons</option></select></label>
+              <label>Race role<select value={marketRole} onChange={(event) => setMarketRole(event.target.value as "lead" | "second")}><option value="lead">Lead driver</option><option value="second">Second driver</option></select></label>
+              <label>Signing bonus (¢p)<input type="number" min="0" step="1" required value={marketBonus} onChange={(event) => setMarketBonus(event.target.value)} /></label>
+            </div>
+            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
+          </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
+        </article>
+      </section>}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "development" && <section className="career-grid">
         <article className="career-panel wide-panel">
