@@ -496,6 +496,11 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_driver_negotiation_cooldown ON driver_negotiation_cooldowns(career_id, team_id, until_season, until_race);
     `,
   },
+  {
+    version: 9,
+    description: "persist the negotiated role for each driver contract",
+    sql: "ALTER TABLE driver_contracts ADD COLUMN role TEXT NOT NULL DEFAULT 'second' CHECK (role IN ('lead', 'second'));",
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
