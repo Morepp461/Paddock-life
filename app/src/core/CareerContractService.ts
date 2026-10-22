@@ -135,8 +135,10 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
     ["winBonus", input.winBonus ?? 0], ["podiumBonus", input.podiumBonus ?? 0],
     ["championshipBonus", input.championshipBonus ?? 0], ["releaseClause", input.releaseClause ?? 0],
   ] as const) {
-    if (!Number.isFinite(value) || value < 0) throw new RangeError(name + " tidak boleh negatif.");
+    if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(name + " harus berupa bilangan bulat non-negatif.");
   }
+  const releaseClause = input.releaseClause ?? 0;
+  if (releaseClause > 0 && (releaseClause < input.offeredSalary * 1.5 || releaseClause > input.offeredSalary * 3)) throw new RangeError("Release clause harus 1,5–3 kali gaji per season, atau 0 jika tanpa klausul.");
   const context = await contractContext(database, input);
   const score = evaluateContractOffer(context.terms);
   const currentSeason = n(context.career, "current_season", 1);
@@ -156,6 +158,8 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
     const contractId = "contract_" + hashSeed([
       String(context.career.world_seed), input.careerId, input.teamId, input.driverId,
       input.startSeason, input.durationSeasons, input.offeredSalary,
+      input.signingBonus ?? 0, input.winBonus ?? 0, input.podiumBonus ?? 0,
+      input.championshipBonus ?? 0, input.releaseClause ?? 0, input.role,
     ]).toString(16).padStart(8, "0");
     const endSeason = input.startSeason + input.durationSeasons - 1;
     const signingBonus = input.signingBonus ?? 0;
