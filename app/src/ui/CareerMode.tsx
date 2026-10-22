@@ -339,7 +339,7 @@ export default function CareerMode() {
   const [marketSalary, setMarketSalary] = useState("100000");
   const [marketDuration, setMarketDuration] = useState("2");
   const [marketRole, setMarketRole] = useState<"lead" | "second">("lead");
-  const [marketBonus, setMarketBonus] = useState("0");
+  const [marketBonus, setMarketBonus] = useState("15");
   const [marketWinBonusEnabled, setMarketWinBonusEnabled] = useState(false);
   const [marketPodiumBonusEnabled, setMarketPodiumBonusEnabled] = useState(false);
   const [marketChampionshipBonusEnabled, setMarketChampionshipBonusEnabled] = useState(false);
