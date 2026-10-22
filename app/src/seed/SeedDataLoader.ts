@@ -6,7 +6,7 @@ export interface ColumnarSeedPayload {
   readonly rows: readonly (readonly unknown[])[];
 }
 
-const CIRCUIT_SOURCE_COLUMNS = [
+export const CIRCUIT_SOURCE_COLUMNS = [
   "id", "name", "country", "type", "lengthKm", "standardLaps", "estimatedLapSeconds",
   "corners", "lowSpeedCorners", "mediumSpeedCorners", "highSpeedCorners", "hairpins",
   "chicanes", "elevationChange", "trackWidth", "longestStraight", "averageSpeed",
