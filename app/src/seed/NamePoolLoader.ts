@@ -97,11 +97,39 @@ export async function loadNamePool(database: IDatabase, input: unknown): Promise
   }
 }
 
+export const NAME_POOL_PUBLIC_PARTS = [
+  "name-pool-01.b64",
+  "name-pool-02.b64",
+  "name-pool-03.b64",
+  "name-pool-04.b64",
+  "name-pool-05.b64",
+  "name-pool-05b.b64",
+  "name-pool-05c.b64",
+  "name-pool-05d.b64",
+  "name-pool-05e.b64",
+  "name-pool-06.b64",
+] as const;
+
+/** Decodes the checked-in gzip/base64 payload without adding a runtime dependency. */
+export async function decodeCompressedNamePool(encodedParts: readonly string[]): Promise<unknown> {
+  if (typeof DecompressionStream === "undefined" || typeof atob === "undefined") {
+    throw new Error("Perangkat ini tidak mendukung pembukaan seed nama terkompresi.");
+  }
+  const encoded = encodedParts.join("").replace(/\s+/g, "");
+  const binary = atob(encoded);
+  const compressed = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const stream = new Blob([compressed.buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+  const json = await new Response(stream).text();
+  return JSON.parse(json) as unknown;
+}
+
 export async function loadNamePoolFromPublic(
   database: IDatabase,
   fetcher: typeof fetch = fetch,
 ): Promise<void> {
-  const response = await fetcher("/seed/name-pool.json");
-  if (!response.ok) throw new Error(`Gagal memuat pool nama: HTTP ${response.status}.`);
-  await loadNamePool(database, await response.json());
+  const responses = await Promise.all(NAME_POOL_PUBLIC_PARTS.map((part) => fetcher("/seed/" + part)));
+  const failed = responses.find((response) => !response.ok);
+  if (failed) throw new Error(`Gagal memuat pool nama: HTTP ${failed.status}.`);
+  const encodedParts = await Promise.all(responses.map((response) => response.text()));
+  await loadNamePool(database, await decodeCompressedNamePool(encodedParts));
 }
