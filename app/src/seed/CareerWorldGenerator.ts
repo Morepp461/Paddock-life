@@ -106,7 +106,7 @@ async function loadNamePoolFromDatabase(database: IDatabase): Promise<NamePool> 
 
 async function insertDriver(
   database: IDatabase, input: {
-    seed: string; index: number; careerId: string; teamId: string | null; tier: TierId;
+    seed: string; index: number | string; careerId: string; teamId: string | null; tier: TierId;
     pool: NamePool; rng: SeededRandom; baseCountry: string; existingNames: Set<string>;
     freeAgent?: boolean;
   },
@@ -403,8 +403,8 @@ export async function generateCareerWorld(
       database.query("SELECT COUNT(*) AS count FROM races WHERE season = 1;"),
       database.query("SELECT COUNT(*) AS count FROM cars WHERE team_id IN (SELECT team_id FROM teams WHERE career_id = ?);", [careerId]),
     ]);
-    if (Number(counts[0]?.count ?? 0) !== 72 || Number(counts[1]?.count ?? 0) !== 174 ||
-        Number(counts[2]?.count ?? 0) !== racesScheduled || Number(counts[3]?.count ?? 0) !== 72) {
+    if (Number(counts[0]?.[0]?.count ?? 0) !== 72 || Number(counts[1]?.[0]?.count ?? 0) !== 174 ||
+        Number(counts[2]?.[0]?.count ?? 0) !== racesScheduled || Number(counts[3]?.[0]?.count ?? 0) !== 72) {
       throw new Error("Validasi world generation gagal; seluruh transaksi career dibatalkan.");
     }
     const playerCount = await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND is_player_team = 1;", [careerId]);
