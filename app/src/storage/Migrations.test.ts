@@ -28,10 +28,10 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "development_projects", "development_history",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "development_projects", "development_history", "driver_negotiation_cooldowns",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }]);
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");
