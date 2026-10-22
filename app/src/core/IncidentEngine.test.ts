@@ -16,13 +16,13 @@ const baseline: IncidentRiskInput = {
 
 describe("incident risk and outcome model", () => {
   it("calculates the documented per-lap risk and tier multiplier", () => {
-    expect(calculateIncidentRisk(baseline)).toEqual({ mistakeScore: 100, perLapProbability: 0.0057 });
+    expect(calculateIncidentRisk(baseline)).toEqual({ mistakeScore: 150, perLapProbability: 0.0076 });
     const maximum = calculateIncidentRisk({
       tier: 6, baseRisk: 100, aggression: 100, tyreStress: 100, weatherRisk: 100,
       pressure: 100, consistency: 0, focus: 0,
     });
     expect(maximum.mistakeScore).toBe(500);
-    expect(maximum.perLapProbability).toBeCloseTo(0.07);
+    expect(maximum.perLapProbability).toBeCloseTo(0.0308);
   });
 
   it("rejects invalid risk scores", () => {
