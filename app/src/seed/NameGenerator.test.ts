@@ -5,7 +5,7 @@ import { validateNamePool } from "./NamePoolLoader";
 
 function fixturePool(): NamePool {
   const countries = Array.from({ length: 199 }, (_, index) => ({
-    countryCode: `X${String(index).padStart(2, "0")}`,
+    countryCode: String.fromCharCode(65 + Math.floor(index / 676), 65 + Math.floor(index / 26) % 26, 65 + index % 26),
     countryName: `Country ${index}`,
     globalWeight: index === 0 ? 10 : 1,
     cultures: [{ cultureId: "test-culture", weight: 1 }],
@@ -25,7 +25,7 @@ function fixturePool(): NamePool {
 describe("culture-aware deterministic name generator", () => {
   it("produces reproducible names and season seeds", () => {
     const pool = fixturePool();
-    const left = generateName(pool, new SeededRandom(321), { role: "driver", tier: 6, baseCountryCode: "X00" });
+    const left = generateName(pool, new SeededRandom(321), { role: "driver", tier: 6, baseCountryCode: "AAA" });
     const right = generateName(pool, new SeededRandom(321), { role: "driver", tier: 6, baseCountryCode: "X00" });
     expect(left).toEqual(right);
     expect(deriveSeasonSeed("world-seed", 2)).toBe(deriveSeasonSeed("world-seed", 2));
@@ -49,7 +49,7 @@ describe("culture-aware deterministic name generator", () => {
   it("uses only the selected country's mapped culture", () => {
     const pool = fixturePool();
     const generated = generateName(pool, new SeededRandom(12), { role: "staff", baseCountryCode: "X00" });
-    expect(generated.countryCode).toBe("X00");
+    expect(generated.countryCode).toBe("AAA");
     expect(generated.cultureId).toBe("test-culture");
   });
 
