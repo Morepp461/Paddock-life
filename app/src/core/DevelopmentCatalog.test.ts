@@ -3,6 +3,7 @@ import {
   CHIEF_ENGINEER_MINIMUM_SKILL,
   DEVELOPMENT_CATALOG,
   getDevelopmentProjectName,
+  getSecondaryReliabilityEffect,
   validateDevelopmentCatalog,
   validateDevelopmentSelection,
 } from "./DevelopmentCatalog";
@@ -32,6 +33,12 @@ describe("development catalog and eligibility", () => {
     expect(getDevelopmentProjectName("E01", 5)).toBe("Karburator/tuning mesin");
     expect(getDevelopmentProjectName("A01", 5)).toBe("Front Wing");
     expect(getDevelopmentProjectName("unknown", 1)).toBeUndefined();
+  });
+
+  it("exposes explicit positive and negative reliability secondary effects", () => {
+    expect(getSecondaryReliabilityEffect("E04")).toBe("positive");
+    expect(getSecondaryReliabilityEffect("A04")).toBe("negative");
+    expect(getSecondaryReliabilityEffect("C01")).toBeUndefined();
   });
 
   it("rejects invalid facility levels and missing projects", () => {
