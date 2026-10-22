@@ -367,7 +367,7 @@ export default function CareerMode() {
           `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
              d.ambition, d.market_value, d.is_academy_driver
            FROM drivers d
-           WHERE d.career_id = ? AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
+           WHERE d.career_id = ? AND d.is_retired = 0 AND d.market_value > 0 AND d.age BETWEEN ? AND ?
              AND NOT EXISTS (
                SELECT 1 FROM driver_contracts dc
                WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
