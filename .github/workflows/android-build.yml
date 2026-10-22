@@ -22,6 +22,8 @@ jobs:
       - name: Sync Capacitor
         working-directory: app
         run: npx cap sync android
+      - name: Lock orientation to landscape
+        run: node tools/lock-landscape.mjs app/android/app/src/main/AndroidManifest.xml
       - name: Build debug APK
         working-directory: app/android
         run: chmod +x gradlew && ./gradlew assembleDebug
