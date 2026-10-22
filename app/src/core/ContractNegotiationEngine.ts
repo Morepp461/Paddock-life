@@ -1,4 +1,5 @@
 import { SeededRandom } from "./SeededRandom";
+import { hashSeed } from "./RandomDistributions";
 
 export const DRIVER_SALARY_RATE = 0.12;
 export const MINIMUM_DEMAND_FACTOR = 0.85;
@@ -59,7 +60,7 @@ export function generateDriverDemandFactor(input: {
   if (!Number.isSafeInteger(input.season) || input.season < 1 || !input.driverId.trim()) {
     throw new RangeError("Season dan driver ID harus valid.");
   }
-  const random = new SeededRandom(String(input.worldSeed) + "|contract-demand|" + input.season + "|" + input.driverId);
+  const random = new SeededRandom(hashSeed([input.worldSeed, "contract-demand", input.season, input.driverId]));
   return MINIMUM_DEMAND_FACTOR + random.next() * (MAXIMUM_DEMAND_FACTOR - MINIMUM_DEMAND_FACTOR);
 }
 
