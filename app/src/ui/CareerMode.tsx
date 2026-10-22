@@ -94,18 +94,19 @@ async function loadCatalog(): Promise<Catalog> {
   };
 }
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
-  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
-    database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]),
+  const careerRows = await database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]);
+  const currentSeason = numberField(careerRows[0], "current_season", 1);
+  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
     database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 ORDER BY d.pace DESC;", [careerId, playerTeamId]),
-    database.query("SELECT r.race_id, r.round, r.laps, r.has_sprint, r.status, r.track_condition, c.name AS circuit_name, c.country AS circuit_country FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = 1 ORDER BY r.round;", ["T" + tier]),
+    database.query("SELECT r.race_id, r.round, r.laps, r.has_sprint, r.status, r.track_condition, c.name AS circuit_name, c.country AS circuit_country FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? ORDER BY r.round;", ["T" + tier, currentSeason]),
     database.query("SELECT o.offer_id, s.name, s.category, s.tier, o.contract_value, o.duration_seasons, o.focus, o.status FROM sponsor_offers o JOIN sponsor_pool s ON s.sponsor_id = o.sponsor_id WHERE o.career_id = ? AND o.team_id = ? ORDER BY s.tier, s.name;", [careerId, playerTeamId]),
     database.query("SELECT staff_id, role, name, age, skill, salary, is_free_agent FROM staff WHERE career_id = ? AND team_id = ? ORDER BY role;", [careerId, playerTeamId]),
     database.query("SELECT type, category, amount, balance_after, season, race, occurred_at FROM finances WHERE team_id = ? ORDER BY occurred_at DESC LIMIT 30;", [playerTeamId]),
-    database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = 1 AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", ["T" + tier]),
-    database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = 1;", [careerId, playerTeamId]),
-    database.query("SELECT * FROM cars WHERE team_id = ? AND season = 1 LIMIT 1;", [playerTeamId]),
+    database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = ? AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", [currentSeason, "T" + tier]),
+    database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = ?;", [careerId, playerTeamId, currentSeason]),
+    database.query("SELECT * FROM cars WHERE team_id = ? AND season = ? LIMIT 1;", [playerTeamId, currentSeason]),
     database.query("SELECT * FROM development_projects WHERE career_id = ? AND team_id = ? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_round DESC;", [careerId, playerTeamId]),
     database.query("SELECT * FROM development_history WHERE career_id = ? AND team_id = ? ORDER BY season DESC, round DESC LIMIT 30;", [careerId, playerTeamId]),
   ]);
