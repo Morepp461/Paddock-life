@@ -1,5 +1,5 @@
-import RaceWorkbench from "./RaceWorkbench";
+import CareerMode from "./CareerMode";
 
 export default function App() {
-  return <RaceWorkbench />;
+  return <CareerMode />;
 }
