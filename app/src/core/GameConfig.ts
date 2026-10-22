@@ -105,11 +105,21 @@ export const TIER_CONFIG: Readonly<Record<TierId, TierConfig>> = {
 
 export const SIMULATION_CONFIG = {
   minimumRaceLaps: 8,
+  referenceRaceDistanceKm: 305,
   referenceLapSeconds: 90,
   carDeltaSecondsPerPoint: 0.045,
   driverDeltaSecondsPerPoint: 0.030,
   setupDeltaSecondsPerPoint: 0.040,
 } as const;
+
+/** Document 01: round up the tier-adjusted 305 km distance, with an 8-lap floor. */
+export function calculateRaceLapCount(circuitLengthKm: number, tier: TierId): number {
+  if (!Number.isFinite(circuitLengthKm) || circuitLengthKm <= 0) {
+    throw new RangeError("Panjang sirkuit harus berupa angka positif yang valid.");
+  }
+  const distanceKm = SIMULATION_CONFIG.referenceRaceDistanceKm * TIER_CONFIG[tier].raceDistanceFactor;
+  return Math.max(SIMULATION_CONFIG.minimumRaceLaps, Math.ceil(distanceKm / circuitLengthKm));
+}
 
 export function calculateBaseLapSeconds(estimatedCircuitLapSeconds: number, tier: TierId): number {
   if (!Number.isFinite(estimatedCircuitLapSeconds) || estimatedCircuitLapSeconds <= 0) {

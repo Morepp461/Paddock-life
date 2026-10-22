@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateBaseLapSeconds,
+  calculateRaceLapCount,
   calculatePerformanceDeltaSeconds,
   SIMULATION_CONFIG,
   TIER_CONFIG,
@@ -38,6 +39,13 @@ describe("document-backed tier configuration", () => {
 });
 
 describe("lap time formula", () => {
+  it("calculates lap count from the tier-adjusted 305 km race distance", () => {
+    expect(calculateRaceLapCount(5.62, 1)).toBe(55);
+    expect(calculateRaceLapCount(5.62, 5)).toBe(22);
+    expect(calculateRaceLapCount(100, 6)).toBe(8);
+    expect(() => calculateRaceLapCount(0, 1)).toThrow(RangeError);
+  });
+
   it("converts circuit estimate using the selected tier pace factor", () => {
     expect(calculateBaseLapSeconds(87.2, 1)).toBeCloseTo(87.2);
     expect(calculateBaseLapSeconds(87.2, 5)).toBeCloseTo(87.2 / 0.7);
