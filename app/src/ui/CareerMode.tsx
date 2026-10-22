@@ -513,6 +513,23 @@ export default function CareerMode() {
   if (dashboard && activeSave) {
     const team = dashboard.team;
     const nextRace = dashboard.races.find((race) => field(race, "status") === "scheduled");
+    const developmentOptions = DEVELOPMENT_CATALOG.filter((project) => activeSave.tier >= project.minimumTier && activeSave.tier <= project.maximumTier);
+    const selectedDevelopment = developmentOptions.find((project) => project.id === developmentProjectId) ?? developmentOptions[0];
+    const chiefEngineer = dashboard.staff.find((member) => field(member, "role") === "Chief Engineer");
+    const selectedFacilityLevel = selectedDevelopment
+      ? numberField(team, selectedDevelopment.category === "aero" ? "aero_center_level" : selectedDevelopment.category === "engine" ? "engine_dept_level" : selectedDevelopment.category === "chassis" ? "chassis_level" : "rnd_level", 1)
+      : 1;
+    const developmentEligibility = selectedDevelopment ? validateDevelopmentSelection({
+      projectId: selectedDevelopment.id, tier: activeSave.tier, size: developmentSize,
+      chiefEngineerSkill: numberField(chiefEngineer, "skill"), facilityLevel: selectedFacilityLevel,
+    }) : { eligible: false, reasons: ["Tidak ada project yang tersedia untuk tier ini."] };
+    const developmentReasons = [...developmentEligibility.reasons];
+    if (!chiefEngineer) developmentReasons.unshift("Tim belum memiliki Chief Engineer.");
+    if (developmentSize === "major" && numberField(team, "rnd_level", 1) < 6) developmentReasons.push("Major project membutuhkan R&D Department minimal level 6.");
+    if (numberField(team, "cash") < 0) developmentReasons.push("Development tidak bisa dimulai saat saldo tim negatif.");
+    if (dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length >= Math.ceil(numberField(team, "rnd_level", 1) / 2)) {
+      developmentReasons.push("Semua slot development sedang terpakai.");
+    }
     const tabs: { id: Tab; label: string }[] = [
       { id: "overview", label: "Overview" }, { id: "calendar", label: "Calendar" }, { id: "roster", label: "Drivers" },
       { id: "staff", label: "Staff" }, { id: "development", label: "Development" }, { id: "sponsors", label: "Sponsors" }, { id: "finance", label: "Finance" }, { id: "standings", label: "Standings" },
