@@ -95,18 +95,19 @@ async function loadCatalog(): Promise<Catalog> {
   };
 }
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
-  const [careerRows, teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
-    database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]),
+  const careerRows = await database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]);
+  const currentSeason = numberField(careerRows[0], "current_season", 1);
+  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory] = await Promise.all([
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
     database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 ORDER BY d.pace DESC;", [careerId, playerTeamId]),
-    database.query("SELECT r.race_id, r.round, r.laps, r.has_sprint, r.status, r.track_condition, c.name AS circuit_name, c.country AS circuit_country FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = 1 ORDER BY r.round;", ["T" + tier]),
+    database.query("SELECT r.race_id, r.round, r.laps, r.has_sprint, r.status, r.track_condition, c.name AS circuit_name, c.country AS circuit_country FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? ORDER BY r.round;", ["T" + tier, currentSeason]),
     database.query("SELECT o.offer_id, s.name, s.category, s.tier, o.contract_value, o.duration_seasons, o.focus, o.status FROM sponsor_offers o JOIN sponsor_pool s ON s.sponsor_id = o.sponsor_id WHERE o.career_id = ? AND o.team_id = ? ORDER BY s.tier, s.name;", [careerId, playerTeamId]),
     database.query("SELECT staff_id, role, name, age, skill, salary, is_free_agent FROM staff WHERE career_id = ? AND team_id = ? ORDER BY role;", [careerId, playerTeamId]),
     database.query("SELECT type, category, amount, balance_after, season, race, occurred_at FROM finances WHERE team_id = ? ORDER BY occurred_at DESC LIMIT 30;", [playerTeamId]),
-    database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = 1 AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", ["T" + tier]),
-    database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = 1;", [careerId, playerTeamId]),
-    database.query("SELECT * FROM cars WHERE team_id = ? AND season = 1 LIMIT 1;", [playerTeamId]),
+    database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = ? AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", [currentSeason, "T" + tier]),
+    database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = ?;", [careerId, playerTeamId, currentSeason]),
+    database.query("SELECT * FROM cars WHERE team_id = ? AND season = ? LIMIT 1;", [playerTeamId, currentSeason]),
     database.query("SELECT * FROM development_projects WHERE career_id = ? AND team_id = ? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_round DESC;", [careerId, playerTeamId]),
     database.query("SELECT * FROM development_history WHERE career_id = ? AND team_id = ? ORDER BY season DESC, round DESC LIMIT 30;", [careerId, playerTeamId]),
   ]);
@@ -115,12 +116,12 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
 }
 
 async function upsertDriverStanding(
-  database: IDatabase, tier: TierId, raceId: string, driverId: string,
+  database: IDatabase, tier: TierId, season: number, raceId: string, driverId: string,
   points: number, wins = 0, podiums = 0, fastestLaps = 0,
 ): Promise<void> {
   const prior = await database.query(
-    "SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND driver_id = ? AND team_id IS NULL;",
-    ["T" + tier, driverId],
+    "SELECT standing_id FROM standings WHERE season = ? AND division_id = ? AND driver_id = ? AND team_id IS NULL;",
+    [season, "T" + tier, driverId],
   );
   if (prior[0]) {
     await database.run(
@@ -129,19 +130,19 @@ async function upsertDriverStanding(
     );
   } else {
     await database.run(
-      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
-      [raceId + "_drv_" + driverId, "T" + tier, driverId, points, wins, podiums, fastestLaps],
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
+      [raceId + "_drv_" + driverId, season, "T" + tier, driverId, points, wins, podiums, fastestLaps],
     );
   }
 }
 
 async function upsertTeamStanding(
-  database: IDatabase, tier: TierId, raceId: string, teamId: string,
+  database: IDatabase, tier: TierId, season: number, raceId: string, teamId: string,
   points: number, wins = 0, podiums = 0,
 ): Promise<void> {
   const prior = await database.query(
-    "SELECT standing_id FROM standings WHERE season = 1 AND division_id = ? AND team_id = ? AND driver_id IS NULL;",
-    ["T" + tier, teamId],
+    "SELECT standing_id FROM standings WHERE season = ? AND division_id = ? AND team_id = ? AND driver_id IS NULL;",
+    [season, "T" + tier, teamId],
   );
   if (prior[0]) {
     await database.run(
@@ -150,16 +151,21 @@ async function upsertTeamStanding(
     );
   } else {
     await database.run(
-      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
-      [raceId + "_team_" + teamId, "T" + tier, teamId, points, wins, podiums],
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 0, 0, 0);",
+      [raceId + "_team_" + teamId, season, "T" + tier, teamId, points, wins, podiums],
     );
   }
 }
 
 async function simulateNextRace(database: IDatabase, careerId: string, tier: TierId, seed: string): Promise<RaceWeekendResult> {
+  const careerStateRows = await database.query("SELECT current_season, current_division_tier FROM career WHERE career_id = ?;", [careerId]);
+  const careerState = careerStateRows[0];
+  if (!careerState) throw new Error("Career tidak ditemukan.");
+  const season = numberField(careerState, "current_season", 1);
+  const playerTier = numberField(careerState, "current_division_tier", tier);
   const raceRows = await database.query(
-    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = 1 AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
-    ["T" + tier],
+    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
+    ["T" + tier, season],
   );
   const race = raceRows[0];
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
@@ -167,11 +173,11 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.aggression,
       t.team_id, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
      FROM drivers d
-     JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= 1 AND dc.end_season >= 1
+     JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
      JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0
-     JOIN cars c ON c.team_id = t.team_id AND c.season = 1
+     JOIN cars c ON c.team_id = t.team_id AND c.season = ?
      ORDER BY t.team_id, d.driver_id;`,
-    [careerId, "T" + tier],
+    [season, season, careerId, "T" + tier, season],
   );
   if (raceDrivers.length !== TIER_CONFIG[tier].gridSize) {
     throw new Error("Grid race harus berisi " + TIER_CONFIG[tier].gridSize + " driver, tetapi ditemukan " + raceDrivers.length + ".");
@@ -216,7 +222,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
           [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
             weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compound, points, row.cumulativeTimeSeconds],
         );
-        await upsertDriverStanding(database, tier, String(race.race_id) + "_sprint", row.driverId, points);
+        await upsertDriverStanding(database, tier, season, String(race.race_id) + "_sprint", row.driverId, points);
       }
       const sprintTeamPoints = new Map<string, number>();
       for (const row of orderedSprint) {
@@ -224,7 +230,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         sprintTeamPoints.set(teamId, (sprintTeamPoints.get(teamId) ?? 0) + calculateSprintRacePoints(row.position));
       }
       for (const [teamId, points] of sprintTeamPoints) {
-        await upsertTeamStanding(database, tier, String(race.race_id) + "_sprint", teamId, points);
+        await upsertTeamStanding(database, tier, season, String(race.race_id) + "_sprint", teamId, points);
       }
     }
 
@@ -238,7 +244,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
           weekend.race.totalLaps, fastestLap, compound, points, row.cumulativeTimeSeconds],
       );
-      await upsertDriverStanding(database, tier, String(race.race_id), row.driverId, points,
+      await upsertDriverStanding(database, tier, season, String(race.race_id), row.driverId, points,
         row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap);
     }
     const teamPoints = new Map<string, { points: number; wins: number; podiums: number }>();
@@ -251,7 +257,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       teamPoints.set(teamId, current);
     }
     for (const [teamId, summary] of teamPoints) {
-      await upsertTeamStanding(database, tier, String(race.race_id), teamId, summary.points, summary.wins, summary.podiums);
+      await upsertTeamStanding(database, tier, season, String(race.race_id), teamId, summary.points, summary.wins, summary.podiums);
     }
 
     const teamRows = await database.query(
@@ -276,16 +282,16 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         const transactionId = String(race.race_id) + "_" + cost.category + "_" + String(teamRow.team_id);
         await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [balance, String(teamRow.team_id)]);
         await database.run(
-          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, 1, ?, 'expense', ?, ?, ?);",
-          [transactionId, String(teamRow.team_id), Number(race.round), cost.category, cost.amount, balance],
+          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, ?, 'expense', ?, ?, ?);",
+          [transactionId, String(teamRow.team_id), season, Number(race.round), cost.category, cost.amount, balance],
         );
       }
     }
-    await advanceCareerDevelopmentProjectsAfterRace(database, {
-      careerId, tier, season: 1, round: Number(race.round),
+    if (tier === playerTier) await advanceCareerDevelopmentProjectsAfterRace(database, {
+      careerId, tier, season, round: Number(race.round),
     });
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
-    await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
+    if (tier === playerTier) await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
   return weekend;
 }
