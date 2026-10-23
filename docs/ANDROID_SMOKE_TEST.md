@@ -32,6 +32,8 @@ Use this checklist after installing the APK produced by **Actions → Android De
 - [ ] Upgrade a facility when affordable and confirm both the facility level and finance ledger change together.
 - [ ] Open Finance and verify cash, debt, budget, and recent ledger entries are readable.
 - [ ] Complete every scheduled round for the player tier, settle the season, and verify a second settlement attempt is rejected.
+- [ ] If a promotion/stay decision appears, test both paths in separate saves; confirm the next season has a fresh calendar, cars, and two age-eligible AI drivers per active team.
+- [ ] Confirm the career resumes after season rollover and the dashboard reflects the player team’s actual division.
 
 ## Known limitations (do not mark as passing)
 - Season rollover, financial movement, promotion/stay choice, AI grid rebuild, and deterministic age/no-team retirement are implemented and covered by CI tests. Staff recruitment/contract negotiation, retired-driver conversion into actual staff roles, and full transfer-window depth remain incomplete.
