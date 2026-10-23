@@ -109,6 +109,7 @@ describe("world season rollover", () => {
     } finally {
       await database.close();
     }
+  });
 
   it("retires a free agent after two completed seasons without a team", async () => {
     const database = await makeDatabase();
@@ -169,6 +170,5 @@ describe("world season rollover", () => {
     } finally {
       await database.close();
     }
-  });
   });
 });
