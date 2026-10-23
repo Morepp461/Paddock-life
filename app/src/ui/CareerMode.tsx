@@ -10,6 +10,7 @@ import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
+import { transitionWorldAfterSeason } from "../core/WorldSeasonTransitionService";
 import { createManagerJobOffers, resolveBoardObjectivesForSeason } from "../core/BoardObjectiveService";
 import { checkBoardObjectiveMidseason } from "../core/BoardObjectiveWarningService";
 import { prepareDivisionPromotionOffer, resolveDivisionPromotionChoice } from "../core/DivisionPromotionService";
@@ -836,6 +837,11 @@ export default function CareerMode() {
         completedSeason: season,
         nextSeason: season + 1,
         resolution: boardResolution,
+      });
+      // Commit source-defined financial movement before choosing a player slot exchange.
+      // The rollover service is idempotent and will reuse this transition marker.
+      await transitionWorldAfterSeason(database, {
+        careerId: activeSave.careerId, completedSeason: season,
       });
       const promotionOffer = await prepareDivisionPromotionOffer(database, {
         careerId: activeSave.careerId, completedSeason: season,
