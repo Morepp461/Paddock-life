@@ -21,6 +21,7 @@ Use this checklist after installing the APK produced by **Actions → Android De
 - [ ] For a scheduled sprint round, confirm sprint results and points appear.
 - [ ] Confirm the main race classification, driver standings, constructor standings, and finance ledger update.
 - [ ] Confirm repeated taps cannot run the same scheduled race twice.
+- [ ] Confirm a successfully completed race increments each car component's service age once, while a rolled-back race does not increment it.
 - [ ] Check that an error leaves the race scheduled rather than partially committing results.
 
 ## Team operations
@@ -35,7 +36,8 @@ Use this checklist after installing the APK produced by **Actions → Android De
 
 ## Known limitations (do not mark as passing)
 - Season rollover and transfer-window completion are not implemented end-to-end yet.
-- The Career Mode race flow still does not fully orchestrate pit stops, incidents, reliability failures, dynamic weather transitions, and safety-car/VSC effects.
+- The Career Mode race flow still does not fully orchestrate pit stops, incidents, reliability failures, dynamic weather transitions, and safety-car/VSC effects. Component service-age persistence is now present, but the failure outcome is not yet applied to race classification.
+- Simulation parameters still missing from source-backed configuration include VSC probability, red-flag probability, Tier 2/3 stationary pit time, exact crew-error/unsafe-release skill curves, and the input mapping for incident BaseRisk/weather risk and FormModifier update factors. Do not fill these with guessed defaults.
 - SaveManager checksum/backup logic exists, but native rotating snapshot/restore integration needs end-to-end verification.
 - Cloud sync, authentication, server-authoritative ads, and purchase validation are not release-ready. Do not test real monetization or treat this build as publish-ready.
 
