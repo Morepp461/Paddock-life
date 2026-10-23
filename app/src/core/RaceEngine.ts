@@ -103,6 +103,9 @@ function validateInput(input: RaceInput): void {
     if (driver.pitLossSecondsByLap?.some((seconds) => !Number.isFinite(seconds) || seconds < 0)) {
       throw new RangeError("Pit loss harus berupa waktu finite non-negatif.");
     }
+    if (driver.pitLossSecondsByLap?.some((seconds, index) => seconds > 0 && !driver.pitStopByLap?.[index])) {
+      throw new Error("Pit loss hanya boleh dicatat pada lap yang memiliki pit stop.");
+    }
     if (driver.pitStopByLap?.[0] || (driver.pitLossSecondsByLap?.[0] ?? 0) !== 0 ||
         (driver.compoundByLap?.[0] !== undefined && driver.compoundByLap[0] !== driver.compound)) {
       throw new Error("Race tidak dapat dimulai dengan pit stop atau perubahan compound pada lap pertama.");
