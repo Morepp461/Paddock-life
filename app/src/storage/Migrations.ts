@@ -660,6 +660,37 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         ('form.max_change_per_race', 'global', 'global', '0.4', '02_Simulation_Rules_Addendum_v1.docx');
     `,
   },
+  {
+    version: 17,
+    description: "persist component service age for reliability simulation",
+    sql: `
+      CREATE TABLE car_component_service (
+        car_id TEXT NOT NULL REFERENCES cars(car_id) ON DELETE CASCADE,
+        component TEXT NOT NULL CHECK (component IN ('engine', 'gearbox', 'brake', 'suspension', 'electronics')),
+        races_since_reset INTEGER NOT NULL DEFAULT 0 CHECK (races_since_reset >= 0),
+        last_service_season INTEGER CHECK (last_service_season IS NULL OR last_service_season >= 1),
+        last_service_round INTEGER CHECK (last_service_round IS NULL OR last_service_round >= 1),
+        PRIMARY KEY (car_id, component)
+      );
+      INSERT INTO car_component_service (car_id, component)
+        SELECT car_id, 'engine' FROM cars
+        UNION ALL SELECT car_id, 'gearbox' FROM cars
+        UNION ALL SELECT car_id, 'brake' FROM cars
+        UNION ALL SELECT car_id, 'suspension' FROM cars
+        UNION ALL SELECT car_id, 'electronics' FROM cars;
+      CREATE TRIGGER initialize_car_component_service
+      AFTER INSERT ON cars
+      BEGIN
+        INSERT INTO car_component_service (car_id, component) VALUES
+          (NEW.car_id, 'engine'),
+          (NEW.car_id, 'gearbox'),
+          (NEW.car_id, 'brake'),
+          (NEW.car_id, 'suspension'),
+          (NEW.car_id, 'electronics');
+      END;
+      CREATE INDEX idx_component_service_age ON car_component_service(component, races_since_reset);
+    `,
+  },
 ]; 
 
 export async function runMigrations(database: IDatabase): Promise<void> {
