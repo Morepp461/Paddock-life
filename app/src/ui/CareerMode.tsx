@@ -3,6 +3,7 @@ import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
+import { calculateCircuitCarScore } from "../core/CircuitCarScore";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
@@ -209,7 +210,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   const season = numberField(careerState, "current_season", 1);
   const playerTier = numberField(careerState, "current_division_tier", tier);
   const raceRows = await database.query(
-    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion, c.overtaking_difficulty, c.drs_zones FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
+    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion, c.overtaking_difficulty, c.drs_zones, c.weight_engine, c.weight_aero, c.weight_high_speed, c.weight_medium_speed, c.weight_low_speed, c.weight_grip, c.weight_traction, c.weight_braking FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
     ["T" + tier, season],
   );
   const race = raceRows[0];
@@ -234,7 +235,17 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   const aiCompound = recommendedTyreCompound(tier, trackCondition);
   const driverInputs = raceDrivers.map((driver) => ({
     id: String(driver.driver_id), name: String(driver.name),
-    carScore: ["engine_power", "aero", "high_speed", "medium_speed", "low_speed", "mechanical_grip", "traction", "braking", "car_tyre_management"].reduce((sum, key) => sum + numberField(driver, key), 0) / 9,
+    carScore: calculateCircuitCarScore(tier, {
+      engine: numberField(race, "weight_engine"), aero: numberField(race, "weight_aero"),
+      highSpeed: numberField(race, "weight_high_speed"), mediumSpeed: numberField(race, "weight_medium_speed"),
+      lowSpeed: numberField(race, "weight_low_speed"), grip: numberField(race, "weight_grip"),
+      traction: numberField(race, "weight_traction"), braking: numberField(race, "weight_braking"),
+    }, {
+      enginePower: numberField(driver, "engine_power"), aero: numberField(driver, "aero"),
+      highSpeed: numberField(driver, "high_speed"), mediumSpeed: numberField(driver, "medium_speed"),
+      lowSpeed: numberField(driver, "low_speed"), grip: numberField(driver, "mechanical_grip"),
+      traction: numberField(driver, "traction"), braking: numberField(driver, "braking"),
+    }),
     driverScore: (numberField(driver, "pace") + numberField(driver, "qualifying") + numberField(driver, "racecraft") + numberField(driver, "consistency")) / 4,
     qualifyingScore: numberField(driver, "qualifying"),
     racecraft: numberField(driver, "racecraft"), starts: numberField(driver, "starts"),
