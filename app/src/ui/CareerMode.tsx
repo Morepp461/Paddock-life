@@ -814,8 +814,15 @@ export default function CareerMode() {
         );
         const pending = numberField(pendingRows[0], "count");
         for (let raceIndex = 0; raceIndex < pending; raceIndex += 1) {
+          const nextScheduledRace = await database.query(
+            "SELECT track_condition FROM races WHERE division_id = ? AND season = ? AND status = 'scheduled' ORDER BY round LIMIT 1;",
+            ["T" + tierId, season],
+          );
+          if (!nextScheduledRace[0]) throw new Error("Race terjadwal Tier " + tierId + " hilang saat simulasi season.");
+          const condition = parseTrackCondition(nextScheduledRace[0].track_condition);
+          const compound = recommendedTyreCompound(tierId, condition);
           setSeasonProgress("Simulating Tier " + tierId + " · race " + (raceIndex + 1) + "/" + pending);
-          await simulateNextRace(database, activeSave.careerId, tierId, worldSeed, TIER_CONFIG[tierId].allowedDryCompounds[0]!);
+          await simulateNextRace(database, activeSave.careerId, tierId, worldSeed, compound);
         }
       }
       for (const tierId of tiers) {
