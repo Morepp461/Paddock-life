@@ -37,7 +37,7 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; boardObjectives: Row[]; manager: Row | null; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number; worldTransitionPending: boolean;
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; boardObjectives: Row[]; manager: Row | null; jobOffers: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number; worldTransitionPending: boolean;
 };
 type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
@@ -105,7 +105,7 @@ async function loadCatalog(): Promise<Catalog> {
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
   const careerRows = await database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]);
   const currentSeason = numberField(careerRows[0], "current_season", 1);
-  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, boardObjectives, managerRows, cars, developmentProjects, developmentHistory, worldPendingRows, worldSettlementPendingRows, worldTransitionPendingRows] = await Promise.all([
+  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, boardObjectives, managerRows, jobOffers, cars, developmentProjects, developmentHistory, worldPendingRows, worldSettlementPendingRows, worldTransitionPendingRows] = await Promise.all([
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
     database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ? JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ? ORDER BY d.pace DESC;", [currentSeason, currentSeason, careerId, playerTeamId, TIER_CONFIG[tier].driverAge.min, TIER_CONFIG[tier].driverAge.max]),
@@ -117,6 +117,7 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = ?;", [careerId, playerTeamId, currentSeason]),
     database.query("SELECT objective_type, target_value, expected_rank, result, manager_fired FROM board_objectives WHERE team_id = ? AND season = ? ORDER BY objective_type;", [playerTeamId, currentSeason]),
     database.query("SELECT manager_id, name, confidence, reputation, consecutive_primary_misses, status FROM career_managers WHERE career_id = ? AND is_player = 1 LIMIT 1;", [careerId]),
+    database.query("SELECT o.offer_id, o.reason, o.offered_season, t.team_id, t.name AS team_name, t.division_id FROM manager_job_offers o JOIN teams t ON t.team_id = o.team_id WHERE o.career_id = ? AND o.status = 'pending' ORDER BY o.offered_season, t.division_id, t.name;", [careerId]),
     database.query("SELECT * FROM cars WHERE team_id = ? AND season = ? LIMIT 1;", [playerTeamId, currentSeason]),
     database.query("SELECT * FROM development_projects WHERE career_id = ? AND team_id = ? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_round DESC;", [careerId, playerTeamId]),
     database.query("SELECT * FROM development_history WHERE career_id = ? AND team_id = ? ORDER BY season DESC, round DESC LIMIT 30;", [careerId, playerTeamId]),
@@ -139,7 +140,7 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     ),
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
-  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, boardObjectives, manager: managerRows[0] ?? null, car: cars[0] ?? null, developmentProjects, developmentHistory, pendingWorldRaces: numberField(worldPendingRows[0], "count"), unsettledWorldDivisions: numberField(worldSettlementPendingRows[0], "count"), worldTransitionPending: numberField(worldTransitionPendingRows[0], "count") === 1 };
+  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, boardObjectives, manager: managerRows[0] ?? null, jobOffers, car: cars[0] ?? null, developmentProjects, developmentHistory, pendingWorldRaces: numberField(worldPendingRows[0], "count"), unsettledWorldDivisions: numberField(worldSettlementPendingRows[0], "count"), worldTransitionPending: numberField(worldTransitionPendingRows[0], "count") === 1 };
 }
 
 async function openCareerSlot(slot: SaveSlot): Promise<{ database: IDatabase; dashboard: DashboardData }> {
@@ -803,6 +804,44 @@ export default function CareerMode() {
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "World season gagal diselesaikan; periksa status race dan settlement.");
     } finally { setSettlingSeason(false); }
+  }
+
+  async function resolveManagerOffer(offerId: string, accept: boolean) {
+    if (!database || !activeSave || !dashboard) return;
+    setSettlementError("");
+    try {
+      const offerRows = await database.query(
+        "SELECT o.offer_id, o.team_id, o.status, t.name AS team_name, t.division_id FROM manager_job_offers o JOIN teams t ON t.team_id = o.team_id WHERE o.offer_id = ? AND o.career_id = ?;",
+        [offerId, activeSave.careerId],
+      );
+      const offer = offerRows[0];
+      if (!offer || field(offer, "status") !== "pending") throw new Error("Job offer sudah tidak tersedia.");
+      if (accept) {
+        const managerRows = await database.query("SELECT manager_id FROM career_managers WHERE career_id = ? AND is_player = 1;", [activeSave.careerId]);
+        const manager = managerRows[0];
+        if (!manager) throw new Error("Manager pemain tidak ditemukan.");
+        const newTeamId = String(offer.team_id);
+        const newTier = tierFromValue(field(offer, "division_id"));
+        await database.transaction(async () => {
+          const currentOffer = await database.query("SELECT status FROM manager_job_offers WHERE offer_id = ?;", [offerId]);
+          if (!currentOffer[0] || field(currentOffer[0], "status") !== "pending") throw new Error("Job offer sudah diproses.");
+          await database.run("UPDATE teams SET is_player_team = 0 WHERE career_id = ? AND is_player_team = 1;", [activeSave.careerId]);
+          await database.run("UPDATE teams SET is_player_team = 1 WHERE career_id = ? AND team_id = ? AND is_active = 1;", [activeSave.careerId, newTeamId]);
+          await database.run("UPDATE career_managers SET team_id = ?, status = 'active' WHERE manager_id = ?;", [newTeamId, String(manager.manager_id)]);
+          await database.run("UPDATE career SET current_division_tier = ?, highest_unlocked_tier = MIN(highest_unlocked_tier, ?), updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [newTier, newTier, activeSave.careerId]);
+          await database.run("UPDATE manager_job_offers SET status = CASE WHEN offer_id = ? THEN 'accepted' ELSE 'expired' END WHERE career_id = ? AND status = 'pending';", [offerId, activeSave.careerId]);
+        });
+        const nextSave = { ...activeSave, teamName: String(offer.team_name), tier: newTier };
+        setActiveSave(nextSave);
+        writeSaveSlots(readSaveSlots().map((slot) => slot.dbName === nextSave.dbName ? { ...slot, teamName: nextSave.teamName, tier: nextSave.tier, savedAt: new Date().toISOString() } : slot));
+        setDashboard(await loadDashboard(database, activeSave.careerId, newTeamId, newTier));
+      } else {
+        await database.run("UPDATE manager_job_offers SET status = 'declined' WHERE offer_id = ? AND career_id = ? AND status = 'pending';", [offerId, activeSave.careerId]);
+        setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+      }
+    } catch (caught) {
+      setSettlementError(caught instanceof Error ? caught.message : "Job offer gagal diproses.");
+    }
   }
 
   async function runNextRace() {
