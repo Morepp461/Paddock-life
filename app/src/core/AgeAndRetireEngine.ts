@@ -37,8 +37,8 @@ export function evaluateAgeAndRetirement(input: AgeAndRetireInput): AgeAndRetire
   let retirementProbability = 0;
   let mandatoryRetirement = false;
   if (input.kind === "driver") {
-    retirementProbability = ageAfter >= 35 ? Math.min(1, 0.05 * (ageAfter - 34)) : 0;
     mandatoryRetirement = ageAfter > 45;
+    retirementProbability = mandatoryRetirement ? 1 : ageAfter >= 35 ? Math.min(1, 0.05 * (ageAfter - 34)) : 0;
   } else if (input.kind === "staff" || input.kind === "ai-manager") {
     retirementProbability = ageAfter >= 65 ? Math.min(1, 0.06 * (ageAfter - 64)) : 0;
     mandatoryRetirement = ageAfter >= 81;

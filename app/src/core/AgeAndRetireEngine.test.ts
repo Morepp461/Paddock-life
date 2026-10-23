@@ -18,6 +18,7 @@ describe("age and retirement engine", () => {
     });
     expect(veteran.ageAfter).toBe(46);
     expect(veteran.shouldRetire).toBe(true);
+    expect(veteran.retirementProbability).toBe(1);
     expect(veteran.retirementReason).toBe("age");
 
     const kartDriver = evaluateAgeAndRetirement({
