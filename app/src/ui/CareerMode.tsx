@@ -457,7 +457,7 @@ export default function CareerMode() {
                WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
              )
            ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
-           LIMIT 100;`,
+`,
           [activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset, targetSeason, targetSeason],
         );
         if (!cancelled) {
