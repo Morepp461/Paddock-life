@@ -37,43 +37,23 @@ function stableId(careerId: string, teamId: string, season: number): string {
 
 async function readOffer(database: IDatabase, offerId: string): Promise<DivisionPromotionOffer | null> {
   const rows = await database.query(
-    `SELECT o.offer_id, o.career_id, o.team_id, o.season, o.current_tier, o.target_tier,
+    `SELECT o.offer_id, o.career_id, o.team_id, o.target_team_id, o.season, o.current_tier, o.target_tier,
        o.unlock_awarded, o.status, player.name AS current_team_name,
-       target.name AS target_team_name, target.cash AS target_team_cash,
-       COALESCE(target_st.points, 0) AS target_points, COALESCE(target_st.wins, 0) AS target_wins
+       target.name AS target_team_name, target.cash AS target_team_cash
      FROM division_promotion_offers o
      JOIN teams player ON player.team_id = o.team_id
-     LEFT JOIN teams target ON target.career_id = o.career_id AND target.division_id = 'T' || o.target_tier
-       AND target.is_active = 1 AND target.is_player_team = 0
-     LEFT JOIN standings target_st ON target_st.team_id = target.team_id AND target_st.season = o.season
-       AND target_st.division_id = 'T' || o.target_tier AND target_st.driver_id IS NULL
-     WHERE o.offer_id = ?
-     ORDER BY target_points ASC, target_wins ASC, target.team_id DESC LIMIT 1;`,
+     JOIN teams target ON target.team_id = o.target_team_id
+     WHERE o.offer_id = ?;`,
     [offerId],
   );
   const row = rows[0];
   if (!row) return null;
-  const targetTeamRows = await database.query(
-    `SELECT t.team_id, t.name, t.cash, COALESCE(s.points, 0) AS points, COALESCE(s.wins, 0) AS wins
-     FROM teams t LEFT JOIN standings s ON s.team_id = t.team_id AND s.season = ? AND s.division_id = t.division_id AND s.driver_id IS NULL
-     WHERE t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND t.is_player_team = 0
-     ORDER BY points ASC, wins ASC, t.team_id DESC LIMIT 1;`,
-    [numberValue(row, "season"), String(row.career_id), "T" + numberValue(row, "target_tier")],
-  );
-  const target = targetTeamRows[0];
-  const allTargetTeams = await database.query(
-    "SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND division_id = ? AND is_active = 1;",
-    [String(row.career_id), "T" + numberValue(row, "target_tier")],
-  );
-  const targetPosition = numberValue(allTargetTeams[0], "count") === 12 ? 12 : 0;
   return {
     offerId: String(row.offer_id), careerId: String(row.career_id), teamId: String(row.team_id),
     season: numberValue(row, "season"), currentTier: tierValue(row.current_tier), targetTier: tierValue(row.target_tier),
     unlockAwarded: numberValue(row, "unlock_awarded") === 1, status: String(row.status) as DivisionPromotionOffer["status"],
-    currentTeamName: String(row.current_team_name),
-    targetTeamName: target ? String(target.name) : "Bottom-ranked team",
-    targetTeamCash: numberValue(target ?? row, "cash", numberValue(row, "target_team_cash")),
-    targetTeamPosition: targetPosition,
+    currentTeamName: String(row.current_team_name), targetTeamName: String(row.target_team_name),
+    targetTeamCash: numberValue(row, "target_team_cash"), targetTeamPosition: 12,
   };
 }
 
