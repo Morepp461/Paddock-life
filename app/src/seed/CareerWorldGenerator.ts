@@ -631,3 +631,90 @@ export async function generateTier6ReplacementTeams(
 
   return { careerId: input.careerId, season: input.season, createdTeamIds, slotsFilled: createdTeamIds.length };
 }
+
+
+/**
+ * Generates age-eligible Tier 6 rookies for an existing active team during
+ * season transition. Uses the same canonical name pool, seeded distributions,
+ * and contract insertion path as initial world generation.
+ */
+export async function generateTier6RookieDrivers(
+  database: IDatabase,
+  input: { readonly careerId: string; readonly teamId: string; readonly season: number; readonly count: number },
+): Promise<readonly string[]> {
+  if (!input.careerId.trim() || !input.teamId.trim() ||
+      !Number.isSafeInteger(input.season) || input.season < 2 ||
+      !Number.isSafeInteger(input.count) || input.count < 1 || input.count > 2) {
+    throw new RangeError("Career, team, season, atau jumlah Tier 6 rookie tidak valid.");
+  }
+  const [careerRows, teamRows, peopleRows] = await Promise.all([
+    database.query("SELECT world_seed FROM career WHERE career_id = ?;", [input.careerId]),
+    database.query("SELECT base_country, division_id, is_active FROM teams WHERE team_id = ? AND career_id = ?;", [input.teamId, input.careerId]),
+    database.query(
+      "SELECT name FROM drivers WHERE career_id = ? UNION SELECT name FROM staff WHERE career_id = ? UNION SELECT name FROM career_managers WHERE career_id = ?;",
+      [input.careerId, input.careerId, input.careerId],
+    ),
+  ]);
+  if (!careerRows[0] || !teamRows[0]) throw new Error("Career atau tim untuk generate Tier 6 rookie tidak ditemukan.");
+  if (String(teamRows[0].division_id) !== "T6" || Number(teamRows[0].is_active) !== 1) {
+    throw new Error("Rookie generator hanya berlaku untuk tim Tier 6 aktif.");
+  }
+  const seed = String(careerRows[0].world_seed);
+  const pool = await loadNamePoolFromDatabase(database);
+  const existingNames = new Set(peopleRows.map((row) => normalizeFullName(String(row.name))));
+  const ids: string[] = [];
+  for (let index = 0; index < input.count; index += 1) {
+    const key = input.season + "-" + input.teamId + "-" + index;
+    const rng = new SeededRandom(hashSeed([seed, "tier6-season-rookie", key]));
+    const driverId = await insertDriver(database, {
+      seed, index: "tier6-season-rookie-" + key, careerId: input.careerId, teamId: input.teamId,
+      tier: 6, pool, rng, baseCountry: String(teamRows[0].base_country), existingNames, season: input.season,
+    });
+    ids.push(driverId);
+  }
+  return ids;
+}
+
+
+/**
+ * Generates a deterministic, age-eligible next-season free agent for AI transfer
+ * windows. The age is stored one season earlier so contract validation and the
+ * rollover age step advance it exactly once into the requested season.
+ */
+export async function generateSeasonFreeAgentDriver(
+  database: IDatabase,
+  input: { readonly careerId: string; readonly tier: Exclude<TierId, 6>; readonly season: number; readonly slot: string },
+): Promise<string> {
+  if (!input.careerId.trim() || !Number.isSafeInteger(input.season) || input.season < 2 ||
+      !input.slot.trim() || input.slot.length > 256) {
+    throw new RangeError("Parameter rookie free-agent season tidak valid.");
+  }
+  const careerRows = await database.query("SELECT world_seed FROM career WHERE career_id = ?;", [input.careerId]);
+  if (!careerRows[0]) throw new Error("Career untuk rookie free-agent tidak ditemukan.");
+  const seed = String(careerRows[0].world_seed);
+  const pool = await loadNamePoolFromDatabase(database);
+  const peopleRows = await database.query(
+    "SELECT name FROM drivers WHERE career_id = ? UNION SELECT name FROM staff WHERE career_id = ? UNION SELECT name FROM career_managers WHERE career_id = ?;",
+    [input.careerId, input.careerId, input.careerId],
+  );
+  const existingNames = new Set(peopleRows.map((row) => normalizeFullName(String(row.name))));
+  const index = "season-free-agent-" + input.season + "-" + input.tier + "-" + input.slot;
+  const expectedDriverId = stableId(seed, "driver", index);
+  const alreadyGenerated = await database.query("SELECT driver_id FROM drivers WHERE driver_id = ? AND career_id = ?;", [expectedDriverId, input.careerId]);
+  if (alreadyGenerated[0]) return expectedDriverId;
+  const rng = new SeededRandom(hashSeed([seed, "season-free-agent", input.season, input.tier, input.slot]));
+  const driverId = await insertDriver(database, {
+    seed,
+    index,
+    careerId: input.careerId,
+    teamId: null,
+    tier: input.tier,
+    pool,
+    rng,
+    baseCountry: "",
+    existingNames,
+    season: input.season,
+  });
+  await database.run("UPDATE drivers SET age = age - 1 WHERE driver_id = ? AND career_id = ?;", [driverId, input.careerId]);
+  return driverId;
+}

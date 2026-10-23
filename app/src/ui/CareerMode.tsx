@@ -4,7 +4,7 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound, calculateTeamDriverPayroll } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
-import { transitionWorldAfterSeason } from "../core/WorldSeasonTransitionService";
+import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
@@ -36,7 +36,7 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number;
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number; worldTransitionPending: boolean;
 };
 type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
@@ -104,10 +104,10 @@ async function loadCatalog(): Promise<Catalog> {
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
   const careerRows = await database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]);
   const currentSeason = numberField(careerRows[0], "current_season", 1);
-  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory, worldPendingRows, worldSettlementPendingRows] = await Promise.all([
+  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory, worldPendingRows, worldSettlementPendingRows, worldTransitionPendingRows] = await Promise.all([
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
-    database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ? JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 ORDER BY d.pace DESC;", [currentSeason, currentSeason, careerId, playerTeamId]),
+    database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ? JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ? ORDER BY d.pace DESC;", [currentSeason, currentSeason, careerId, playerTeamId, TIER_CONFIG[tier].driverAge.min, TIER_CONFIG[tier].driverAge.max]),
     database.query("SELECT r.race_id, r.round, r.laps, r.has_sprint, r.status, r.track_condition, c.name AS circuit_name, c.country AS circuit_country FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? ORDER BY r.round;", ["T" + tier, currentSeason]),
     database.query("SELECT o.offer_id, s.name, s.category, s.tier, o.contract_value, o.duration_seasons, o.focus, o.status FROM sponsor_offers o JOIN sponsor_pool s ON s.sponsor_id = o.sponsor_id WHERE o.career_id = ? AND o.team_id = ? ORDER BY s.tier, s.name;", [careerId, playerTeamId]),
     database.query("SELECT staff_id, role, name, age, skill, salary, is_free_agent FROM staff WHERE career_id = ? AND team_id = ? ORDER BY role;", [careerId, playerTeamId]),
@@ -126,9 +126,17 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
       );`,
       [currentSeason, careerId, currentSeason],
     ),
+    database.query(
+      `SELECT CASE WHEN
+        (SELECT COUNT(*) FROM races WHERE season = ? AND status = 'scheduled') = 0
+        AND (SELECT COUNT(*) FROM season_settlements WHERE career_id = ? AND season = ?) = 72
+        AND NOT EXISTS (SELECT 1 FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'season-rollover-ready')
+        THEN 1 ELSE 0 END AS count;`,
+      [currentSeason, careerId, currentSeason, careerId, currentSeason + 1],
+    ),
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
-  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, car: cars[0] ?? null, developmentProjects, developmentHistory, pendingWorldRaces: numberField(worldPendingRows[0], "count"), unsettledWorldDivisions: numberField(worldSettlementPendingRows[0], "count") };
+  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, car: cars[0] ?? null, developmentProjects, developmentHistory, pendingWorldRaces: numberField(worldPendingRows[0], "count"), unsettledWorldDivisions: numberField(worldSettlementPendingRows[0], "count"), worldTransitionPending: numberField(worldTransitionPendingRows[0], "count") === 1 };
 }
 
 async function openCareerSlot(slot: SaveSlot): Promise<{ database: IDatabase; dashboard: DashboardData }> {
@@ -203,10 +211,10 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       t.team_id, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
      FROM drivers d
      JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-     JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0
+     JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
      JOIN cars c ON c.team_id = t.team_id AND c.season = ?
      ORDER BY t.team_id, d.driver_id;`,
-    [season, season, careerId, "T" + tier, season],
+    [season, season, careerId, "T" + tier, TIER_CONFIG[tier].driverAge.min, TIER_CONFIG[tier].driverAge.max, season],
   );
   if (raceDrivers.length !== TIER_CONFIG[tier].gridSize) {
     throw new Error("Grid race harus berisi " + TIER_CONFIG[tier].gridSize + " driver, tetapi ditemukan " + raceDrivers.length + ".");
@@ -372,6 +380,7 @@ export default function CareerMode() {
   }, []);
   const [marketDrivers, setMarketDrivers] = useState<Row[]>([]);
   const [marketSeatsAvailable, setMarketSeatsAvailable] = useState(false);
+  const [marketTargetSeason, setMarketTargetSeason] = useState(2);
   const [marketDriverId, setMarketDriverId] = useState("");
   const [marketSalary, setMarketSalary] = useState("100000");
   const [marketDuration, setMarketDuration] = useState("2");
@@ -392,9 +401,12 @@ export default function CareerMode() {
       try {
         setMarketError("");
         const season = numberField(dashboard.career, "current_season", 1);
-        const targetSeason = season + 1;
         const band = TIER_CONFIG[activeSave.tier].driverAge;
-        const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;", [String(dashboard.team.team_id), targetSeason, targetSeason]);
+        const currentSeats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age BETWEEN ? AND ?;", [String(dashboard.team.team_id), season, season, band.min, band.max]);
+        const targetSeason = numberField(currentSeats[0], "occupied_seats") < 2 ? season : season + 1;
+        const ageOffset = targetSeason - season;
+        setMarketTargetSeason(targetSeason);
+        const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;", [String(dashboard.team.team_id), targetSeason, targetSeason, ageOffset, band.min, band.max]);
         if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
           if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
           return;
@@ -411,7 +423,7 @@ export default function CareerMode() {
              )
            ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
            LIMIT 100;`,
-          [activeSave.careerId, Math.max(0, band.min - 1), band.max - 1, targetSeason, targetSeason],
+          [activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset, targetSeason, targetSeason],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
@@ -714,7 +726,7 @@ export default function CareerMode() {
         careerId: activeSave.careerId,
         teamId: String(dashboard.team.team_id),
         driverId: marketDriverId,
-        startSeason: numberField(dashboard.career, "current_season", 1) + 1,
+        startSeason: marketTargetSeason,
         durationSeasons: Number(marketDuration),
         offeredSalary: Number(marketSalary),
         signingBonus: Number(marketBonus),
@@ -761,17 +773,22 @@ export default function CareerMode() {
         }
       }
       for (const tierId of tiers) {
+        const settledRows = await database.query(
+          "SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = ? AND division_id = ?;",
+          [activeSave.careerId, season, "T" + tierId],
+        );
+        if (numberField(settledRows[0], "count") === 12) continue;
         setSeasonProgress("Settling Tier " + tierId + " finances…");
         await settleCareerSeason(database, { careerId: activeSave.careerId, season, tier: tierId });
       }
-      setSeasonProgress("Applying financial division movement and filling Tier 6 vacancies…");
-      const transition = await transitionWorldAfterSeason(database, {
+      setSeasonProgress("Running world transition and preparing the next season…");
+      const rollover = await rollWorldSeasonForward(database, {
         careerId: activeSave.careerId,
         completedSeason: season,
       });
       await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
-      setSeasonProgress("Financial transition complete: " + transition.movementEvents.length + " team movements, " + transition.replacementTeamsCreated + " Tier 6 replacements. Next-season calendar and contract rollover are still pending.");
+      setSeasonProgress("Season " + rollover.currentSeason + " is ready: " + rollover.aiTeamsReady + " AI teams have valid race rosters, " + rollover.financialMovements + " financial movements, " + rollover.tier6ReplacementTeams + " Tier 6 replacements.");
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "World season gagal diselesaikan; periksa status race dan settlement.");
     } finally { setSettlingSeason(false); }
@@ -835,7 +852,7 @@ export default function CareerMode() {
       <nav className="career-tabs">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
       {tab === "overview" && <section className="career-grid">
         <article className="career-panel wide-panel"><div className="panel-title"><div><small>RACE CONTROL</small><h2>{nextRace ? "Next race" : "Season completed"}</h2></div><span className="status-chip">{nextRace ? "SCHEDULED" : "COMPLETE"}</span></div>
-          {nextRace ? <><p className="next-race-name">{field(nextRace, "circuit_name")} <span>· {field(nextRace, "circuit_country")}</span></p><div className="stat-strip"><span>ROUND <b>{field(nextRace, "round")}/{dashboard.races.length}</b></span><span>LAPS <b>{field(nextRace, "laps")}</b></span><span>SPRINT <b>{numberField(nextRace, "has_sprint") ? "YES" : "NO"}</b></span></div><button className="primary-button" disabled={runningRace} onClick={() => void runNextRace()}>{runningRace ? "Simulating race…" : "Run race weekend →"}</button>{raceError && <p className="inline-error">{raceError}</p>}</> : dashboard.settlements.length ? <><p className="muted-text">Season {numberField(dashboard.career, "current_season", 1)} sudah ditutup untuk tim kamu. Saldo akhir: {formatCash(numberField(dashboard.settlements[0], "closing_cash"))}.</p><div className="settlement-summary"><span>Prize money <b>{formatCash(numberField(dashboard.settlements[0], "prize_money"))}</b></span><span>Commercial <b>{formatCash(numberField(dashboard.settlements[0], "commercial_revenue"))}</b></span><span>Sponsor <b>{formatCash(numberField(dashboard.settlements[0], "sponsor_revenue"))}</b></span><span>Net season <b>{formatCash(numberField(dashboard.settlements[0], "net_amount"))}</b></span></div>{(dashboard.pendingWorldRaces > 0 || dashboard.unsettledWorldDivisions > 0) && <><p className="muted-text">{dashboard.pendingWorldRaces > 0 ? dashboard.pendingWorldRaces + " race di divisi lain belum disimulasikan." : dashboard.unsettledWorldDivisions + " divisi belum menyelesaikan settlement finansial."}</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish remaining divisions →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}{dashboard.pendingWorldRaces === 0 && dashboard.unsettledWorldDivisions === 0 && <p className="muted-text">{seasonProgress || "Season finances are settled. Next-season calendar and contract rollover are not available yet."}</p>}</> : <><p className="muted-text">Semua ronde season ini selesai. Tutup season untuk memproses hadiah, pendapatan komersial, sponsor, bunga utang, dan maintenance fasilitas.</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish world season & settle finances →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}
+          {nextRace ? <><p className="next-race-name">{field(nextRace, "circuit_name")} <span>· {field(nextRace, "circuit_country")}</span></p><div className="stat-strip"><span>ROUND <b>{field(nextRace, "round")}/{dashboard.races.length}</b></span><span>LAPS <b>{field(nextRace, "laps")}</b></span><span>SPRINT <b>{numberField(nextRace, "has_sprint") ? "YES" : "NO"}</b></span></div>{dashboard.roster.length < 2 ? <><p className="inline-error">Roster belum memiliki dua driver race yang eligible untuk season ini. Lengkapi kursi di Transfer Market sebelum memulai race.</p><button className="primary-button" onClick={() => setTab("roster")}>Open driver market →</button></> : <button className="primary-button" disabled={runningRace} onClick={() => void runNextRace()}>{runningRace ? "Simulating race…" : "Run race weekend →"}</button>}{raceError && <p className="inline-error">{raceError}</p>}</> : dashboard.settlements.length ? <><p className="muted-text">Season {numberField(dashboard.career, "current_season", 1)} sudah ditutup untuk tim kamu. Saldo akhir: {formatCash(numberField(dashboard.settlements[0], "closing_cash"))}.</p><div className="settlement-summary"><span>Prize money <b>{formatCash(numberField(dashboard.settlements[0], "prize_money"))}</b></span><span>Commercial <b>{formatCash(numberField(dashboard.settlements[0], "commercial_revenue"))}</b></span><span>Sponsor <b>{formatCash(numberField(dashboard.settlements[0], "sponsor_revenue"))}</b></span><span>Net season <b>{formatCash(numberField(dashboard.settlements[0], "net_amount"))}</b></span></div>{(dashboard.pendingWorldRaces > 0 || dashboard.unsettledWorldDivisions > 0 || dashboard.worldTransitionPending) && <><p className="muted-text">{dashboard.pendingWorldRaces > 0 ? dashboard.pendingWorldRaces + " race di divisi lain belum disimulasikan." : dashboard.unsettledWorldDivisions > 0 ? dashboard.unsettledWorldDivisions + " divisi belum menyelesaikan settlement finansial." : "World transition belum selesai. Lanjutkan agar kalender, mobil, dan roster AI season berikutnya disiapkan."}</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish remaining divisions →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}{dashboard.pendingWorldRaces === 0 && dashboard.unsettledWorldDivisions === 0 && <p className="muted-text">{seasonProgress || "Season finances are settled. Next-season calendar and contract rollover are not available yet."}</p>}</> : <><p className="muted-text">Semua ronde season ini selesai. Tutup season untuk memproses hadiah, pendapatan komersial, sponsor, bunga utang, dan maintenance fasilitas.</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish world season & settle finances →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}
         </article>
         <article className="career-panel"><small>WORLD STATUS</small><div className="big-number">{dashboard.teams.length}<span>/ 12</span></div><p>Teams in this division</p><div className="stat-line"><span>Drivers in roster</span><b>{dashboard.roster.length}/2</b></div><div className="stat-line"><span>Active sponsor offers</span><b>{dashboard.sponsors.length}</b></div></article>
         <article className="career-panel"><small>CAR DEVELOPMENT</small><h2>Season 1</h2><p className="muted-text">Project development kini tersedia di tab Development. Facility upgrades dan kontrak driver belum tersedia.</p></article>
