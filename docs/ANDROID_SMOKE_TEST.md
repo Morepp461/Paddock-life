@@ -34,9 +34,9 @@ Use this checklist after installing the APK produced by **Actions → Android De
 - [ ] Complete every scheduled round for the player tier, settle the season, and verify a second settlement attempt is rejected.
 
 ## Known limitations (do not mark as passing)
-- Season rollover and transfer-window completion are not implemented end-to-end yet.
+- Season rollover, financial movement, promotion/stay choice, AI grid rebuild, and deterministic age/no-team retirement are implemented and covered by CI tests. Staff recruitment/contract negotiation, retired-driver conversion into actual staff roles, and full transfer-window depth remain incomplete.
 - The Career Mode race flow still does not fully orchestrate pit stops, incidents, reliability failures, dynamic weather transitions, and safety-car/VSC effects.
-- SaveManager checksum/backup logic exists, but native rotating snapshot/restore integration needs end-to-end verification.
+- Save snapshot/backup/restore is integrated and SQL.js-tested; native device fault injection and IndexedDB quota/availability behavior still need device verification.
 - Cloud sync, authentication, server-authoritative ads, and purchase validation are not release-ready. Do not test real monetization or treat this build as publish-ready.
 
 ## Report a failure
