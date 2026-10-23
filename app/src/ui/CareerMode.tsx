@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
+import { incrementComponentServiceAgeForRace } from "../core/CarComponentService";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
 import { calculateCircuitCarScore } from "../core/CircuitCarScore";
@@ -376,10 +377,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     if (tier === playerTier) await advanceCareerDevelopmentProjectsAfterRace(database, {
       careerId, tier, season, round: Number(race.round),
     });
-    await database.run(
-      "UPDATE car_component_service SET races_since_reset = races_since_reset + 1 WHERE car_id IN (SELECT c.car_id FROM cars c JOIN teams t ON t.team_id = c.team_id WHERE t.career_id = ? AND t.division_id = ? AND c.season = ? AND t.is_active = 1);",
-      [careerId, "T" + tier, season],
-    );
+    await incrementComponentServiceAgeForRace(database, { careerId, tier, season });
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
     if (tier === playerTier) await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
