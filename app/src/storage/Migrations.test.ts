@@ -92,6 +92,31 @@ describe("local schema migrations", () => {
     expect(rows).toEqual([{ career_id: "career-valid", current_division_tier: 3 }]);
   });
 
+  it("initializes component service age for every newly created car", async () => {
+    await database.run(
+      "INSERT INTO career (career_id, career_name, current_division_tier, highest_unlocked_tier, game_mode, difficulty, world_seed) VALUES (?, ?, ?, ?, ?, ?, ?);",
+      ["career-component-service", "Component Service Test", 1, 1, "career", "normal", "component-seed"],
+    );
+    await database.run(
+      "INSERT INTO divisions (division_id, tier, name, rounds_per_season, distance_factor, min_driver_age, max_driver_age, required_budget, is_playable, is_visible) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      ["T1", 1, "Test Tier", 24, 1, 18, 45, 1000, 1, 1],
+    );
+    await database.run(
+      "INSERT INTO teams (team_id, career_id, division_id, name, base_country, origin, founded_season, strength_grade, finance_grade, performance_grade, personality, cash, debt, budget) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      ["team-component-service", "career-component-service", "T1", "Test Team", "GBR", "generated", 1, "B", "B", "B", "balanced", 1000, 0, 1000],
+    );
+    await database.run(
+      "INSERT INTO cars (car_id, team_id, season, engine_power, aero, high_speed, medium_speed, low_speed, mechanical_grip, traction, braking, tyre_management, engine_reliability, gearbox_reliability, brake_reliability, suspension_reliability, electronics_reliability) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      ["car-component-service", "team-component-service", 1, 50, 50, 50, 50, 50, 50, 50, 50, 50, 75, 75, 75, 75, 75],
+    );
+    const components = await database.query(
+      "SELECT component, races_since_reset FROM car_component_service WHERE car_id = ? ORDER BY component;",
+      ["car-component-service"],
+    );
+    expect(components).toHaveLength(5);
+    expect(components.every((row) => row.races_since_reset === 0)).toBe(true);
+  });
+
   it("rolls back all changes when a transaction fails", async () => {
     await expect(database.transaction(async () => {
       await database.run(
