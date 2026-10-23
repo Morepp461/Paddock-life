@@ -41,15 +41,13 @@ export class IndexedDbSaveStorage implements SaveStorage {
 
   private openDatabase(): Promise<IDBDatabase> {
     if (this.databasePromise) return this.databasePromise;
-    this.databasePromise = new Promise((resolve, reject) => {
-      let request: IDBOpenDBRequest;
-      try {
-        request = this.factory.open(DATABASE_NAME, DATABASE_VERSION);
-      } catch (error) {
-        this.databasePromise = null;
-        reject(error instanceof Error ? error : new Error("Database backup gagal dibuka."));
-        return;
-      }
+    let request: IDBOpenDBRequest;
+    try {
+      request = this.factory.open(DATABASE_NAME, DATABASE_VERSION);
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error("Database backup gagal dibuka."));
+    }
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
       request.onupgradeneeded = () => {
         const database = request.result;
         if (!database.objectStoreNames.contains(STORE_NAME)) {
@@ -58,15 +56,16 @@ export class IndexedDbSaveStorage implements SaveStorage {
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => {
-        this.databasePromise = null;
+        if (this.databasePromise === opening) this.databasePromise = null;
         reject(request.error ?? new Error("Database backup tidak bisa dibuka."));
       };
       request.onblocked = () => {
-        this.databasePromise = null;
+        if (this.databasePromise === opening) this.databasePromise = null;
         reject(new Error("Database backup sedang diblokir oleh tab atau proses lain."));
       };
     });
-    return this.databasePromise;
+    this.databasePromise = opening;
+    return opening;
   }
 
   async read(slotId: string, key: StoredSaveRecord["key"]): Promise<SaveRecord | null> {
