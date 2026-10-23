@@ -28,16 +28,22 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "development_projects", "development_history", "driver_negotiation_cooldowns",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");
     const managerColumns = await database.query("PRAGMA table_info(career_managers);");
     expect(managerColumns.map((column) => column.name)).toContain("confidence");
     expect(managerColumns.map((column) => column.name)).toContain("consecutive_primary_misses");
+    const teamColumns = await database.query("PRAGMA table_info(teams);");
+    expect(teamColumns.map((column) => column.name)).toContain("severe_distress_seasons");
+    const movementColumns = await database.query("PRAGMA table_info(team_division_history);");
+    expect(movementColumns.map((column) => column.name)).toContain("from_tier");
+    expect(movementColumns.map((column) => column.name)).toContain("to_tier");
+    expect(movementColumns.map((column) => column.name)).toContain("reason");
   });
 
   it("enforces documented career mode and tier constraints", async () => {
