@@ -61,7 +61,7 @@ function scoreStrategy(
     const pace = getCompoundPaceResult({ compound, trackCondition: "dry" });
     if (!pace.usable) throw new Error("Compound strategi tidak valid untuk kondisi dry.");
     cost += pace.deltaSecondsPerLap + calculateWearPenaltySeconds(wear);
-    wear += calculateWearPerLap({
+    wear = Math.min(100, wear + calculateWearPerLap({
       compound,
       trackAbrasion: input.trackAbrasion,
       driverAggression: input.driverAggression,
@@ -69,7 +69,7 @@ function scoreStrategy(
       mechanicalGrip: input.mechanicalGrip,
       driverTyreManagement: input.driverTyreManagement,
       tierWearMultiplier: tier.tyreWearMultiplier,
-    });
+    }));
   }
   return cost;
 }
