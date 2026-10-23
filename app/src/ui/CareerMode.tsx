@@ -249,6 +249,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     trackAbrasion: Number(race.abrasion), trackTemperatureCelsius: 25,
     trackCondition, referenceSetupScore: 50,
     hasSprint: Number(race.has_sprint) === 1,
+    overtakingDifficulty: Number(race.overtaking_difficulty),
     drivers: driverInputs,
   });
   const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));

@@ -127,7 +127,9 @@ function applyGridAndOvertaking(
     const rowById = new Map(rawLap.map((row) => [row.driverId, row]));
     const order = lapIndex === 0
       ? startingOrder.slice()
-      : laps[lapIndex - 1]!.map((row) => row.driverId);
+      : input.overtakingDifficulty === undefined
+        ? rawLap.map((row) => row.driverId)
+        : laps[lapIndex - 1]!.map((row) => row.driverId);
     if (input.overtakingDifficulty !== undefined) {
       for (let index = 1; index < order.length; index += 1) {
         let attackerPosition = index;

@@ -44,6 +44,24 @@ describe("race weekend orchestration", () => {
     expect(new Set(adjustedGrid).size).toBe(24);
   });
 
+  it("continues ordering by accumulated lap performance when circuit overtaking config is absent", () => {
+    const roster = drivers(24).map((driver, index) => index === 0
+      ? { ...driver, carScore: 30, driverScore: 30, qualifyingScore: 100 }
+      : index === 23
+        ? { ...driver, carScore: 100, driverScore: 100, qualifyingScore: 0 }
+        : driver);
+    const result = simulateRaceWeekend({
+      worldSeed: "lap-order-fallback-test", season: 1, round: 1, tier: 1,
+      estimatedCircuitLapSeconds: 90, totalLaps: 8, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry", referenceSetupScore: 50,
+      hasSprint: false, drivers: roster,
+    });
+    const qualifyingGrid = result.qualifying.classification.find((row) => row.driverId === "D24")!.gridPosition;
+    const lapTwoPosition = result.race.laps[1]!.find((row) => row.driverId === "D24")!.position;
+    expect(qualifyingGrid).toBeGreaterThan(12);
+    expect(lapTwoPosition).toBeLessThan(qualifyingGrid);
+  });
+
   it("allows a faster driver to attempt and make source-modelled overtakes instead of auto-sorting only by lap time", () => {
     const roster = drivers(24).map((driver, index) => index === 0
       ? { ...driver, carScore: 30, driverScore: 30, qualifyingScore: 100, racecraft: 0, overtakingSkill: 0, defendingSkill: 0 }
