@@ -58,6 +58,20 @@ describe("SaveManager", () => {
     await expect(manager.load("slot2", "wrong-career")).rejects.toThrow("tidak cocok");
   });
 
+  it("restores a verified backup even when the current snapshot is corrupt", async () => {
+    const storage = new MemorySaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot3", careerId: "career3", data: new Uint8Array([1]), trigger: "manual", isSandbox: false });
+    await manager.save({ slotId: "slot3", careerId: "career3", data: new Uint8Array([2]), trigger: "race-completed", isSandbox: false });
+    const corruptCurrent = await storage.read("slot3", "current");
+    if (!corruptCurrent) throw new Error("Current save is missing.");
+    await storage.writeAtomic("slot3", "current", { ...corruptCurrent, data: new Uint8Array([99]) });
+
+    const restored = await manager.restoreBackup("slot3", "career3", "backup-1");
+    expect(Array.from(restored.data)).toEqual([1]);
+    expect(Array.from((await manager.load("slot3", "career3"))!.data)).toEqual([1]);
+  });
+
   it("rejects invalid slot IDs and empty snapshots", async () => {
     const manager = makeManager(new MemorySaveStorage());
     await expect(manager.save({ slotId: "../escape", careerId: "c", data: new Uint8Array([1]), trigger: "manual", isSandbox: false })).rejects.toThrow("slot");
