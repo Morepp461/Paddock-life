@@ -214,14 +214,6 @@ export async function resolveBoardObjectivesForSeason(
     higherDivisionUnlocked,
   });
   const managerReputation = result.managerFired ? Math.round(result.managerReputationAfter * 0.9) : result.managerReputationAfter;
-  const managerRowResult = {
-    ...result,
-    managerReputationAfter: managerReputation,
-    constructorPosition: position,
-    expectedRank,
-    closingCash,
-    requiredBudget,
-  };
   await database.transaction(async () => {
     for (const objective of objectiveRows) {
       let objectiveResult: Record<string, unknown>;
@@ -249,7 +241,7 @@ export async function resolveBoardObjectivesForSeason(
     };
     await database.run(
       "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, 'board-objectives-resolved', ?);",
-      [input.careerId, input.season, JSON.stringify({ ...resolution, evaluation: managerRowResult })],
+      [input.careerId, input.season, JSON.stringify(resolution)],
     );
   });
   return {
