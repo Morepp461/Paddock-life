@@ -66,10 +66,10 @@ export class IndexedDbSaveStorage implements SaveStorage {
     const database = await this.openDatabase();
     const transaction = database.transaction(STORE_NAME, "readonly");
     const done = transactionDone(transaction);
-    const stored = await requestResult<StoredSaveRecord | undefined>(
+    const request = requestResult<StoredSaveRecord | undefined>(
       transaction.objectStore(STORE_NAME).get(recordId(slotId, key)),
     );
-    await done;
+    const [stored] = await Promise.all([request, done]);
     return stored?.record ?? null;
   }
 
