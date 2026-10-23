@@ -76,7 +76,16 @@ export class SaveManager {
     if (current) {
       await this.verifyRecord(current, input.slotId, input.careerId);
       const backup1 = await this.storage.read(input.slotId, "backup-1");
-      if (backup1) await this.storage.writeAtomic(input.slotId, "backup-2", backup1);
+      let backup1IsValid = false;
+      if (backup1) {
+        try {
+          await this.verifyRecord(backup1, input.slotId, input.careerId);
+          backup1IsValid = true;
+        } catch {
+          // Do not propagate a corrupt backup into the older-backup slot.
+        }
+      }
+      if (backup1 && backup1IsValid) await this.storage.writeAtomic(input.slotId, "backup-2", backup1);
       else await this.storage.delete(input.slotId, "backup-2");
       await this.storage.writeAtomic(input.slotId, "backup-1", current);
     }
