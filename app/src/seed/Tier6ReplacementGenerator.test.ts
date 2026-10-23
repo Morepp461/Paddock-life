@@ -86,7 +86,7 @@ describe("Tier 6 replacement team generation", () => {
         .toHaveLength(1);
 
       await expect(generateTier6ReplacementTeams(database, { careerId: career.careerId, season: 2 }))
-        .rejects.toThrow("already been run");
+        .rejects.toThrow("sudah dijalankan");
     } finally {
       await database.close();
     }
