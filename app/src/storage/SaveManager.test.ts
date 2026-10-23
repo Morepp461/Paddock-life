@@ -58,6 +58,48 @@ describe("SaveManager", () => {
     await expect(manager.load("slot2", "wrong-career")).rejects.toThrow("tidak cocok");
   });
 
+  it("restores a verified backup even when the current snapshot is corrupt", async () => {
+    const storage = new MemorySaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot3", careerId: "career3", data: new Uint8Array([1]), trigger: "manual", isSandbox: false });
+    await manager.save({ slotId: "slot3", careerId: "career3", data: new Uint8Array([2]), trigger: "race-completed", isSandbox: false });
+    const corruptCurrent = await storage.read("slot3", "current");
+    if (!corruptCurrent) throw new Error("Current save is missing.");
+    await storage.writeAtomic("slot3", "current", { ...corruptCurrent, data: new Uint8Array([99]) });
+
+    const restored = await manager.restoreBackup("slot3", "career3", "backup-1");
+    expect(Array.from(restored.data)).toEqual([1]);
+    expect(Array.from((await manager.load("slot3", "career3"))!.data)).toEqual([1]);
+  });
+
+  it("does not rotate a corrupt backup into the older backup slot", async () => {
+    const storage = new MemorySaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot-corrupt-backup", careerId: "career-corrupt-backup", data: new Uint8Array([1]), trigger: "manual", isSandbox: false });
+    await manager.save({ slotId: "slot-corrupt-backup", careerId: "career-corrupt-backup", data: new Uint8Array([2]), trigger: "race-completed", isSandbox: false });
+    const backup = await storage.read("slot-corrupt-backup", "backup-1");
+    if (!backup) throw new Error("Backup is missing.");
+    await storage.writeAtomic("slot-corrupt-backup", "backup-1", { ...backup, data: new Uint8Array([77]) });
+
+    await manager.save({ slotId: "slot-corrupt-backup", careerId: "career-corrupt-backup", data: new Uint8Array([3]), trigger: "race-completed", isSandbox: false });
+
+    expect(await storage.read("slot-corrupt-backup", "backup-2")).toBeNull();
+    expect(Array.from((await storage.read("slot-corrupt-backup", "backup-1"))!.data)).toEqual([2]);
+    expect(Array.from((await manager.load("slot-corrupt-backup", "career-corrupt-backup"))!.data)).toEqual([3]);
+  });
+
+  it("deletes current and both rotating backups for a removed slot", async () => {
+    const storage = new MemorySaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot-delete", careerId: "career-delete", data: new Uint8Array([1]), trigger: "manual", isSandbox: false });
+    await manager.save({ slotId: "slot-delete", careerId: "career-delete", data: new Uint8Array([2]), trigger: "race-completed", isSandbox: false });
+    await manager.save({ slotId: "slot-delete", careerId: "career-delete", data: new Uint8Array([3]), trigger: "race-completed", isSandbox: false });
+    await manager.deleteSlot("slot-delete");
+    expect(await storage.read("slot-delete", "current")).toBeNull();
+    expect(await storage.read("slot-delete", "backup-1")).toBeNull();
+    expect(await storage.read("slot-delete", "backup-2")).toBeNull();
+  });
+
   it("rejects invalid slot IDs and empty snapshots", async () => {
     const manager = makeManager(new MemorySaveStorage());
     await expect(manager.save({ slotId: "../escape", careerId: "c", data: new Uint8Array([1]), trigger: "manual", isSandbox: false })).rejects.toThrow("slot");

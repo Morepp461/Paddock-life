@@ -19,6 +19,9 @@ import { validateTeamPoolSeed, type TeamPoolSeedPayload } from "../seed/TeamSeed
 import { validateCareerSetupDraft, type CareerSetupDraft, type CareerTeamCandidate } from "../core/CareerSetupEngine";
 import { generateCareerWorld, type CareerGenerationResult } from "../seed/CareerWorldGenerator";
 import { openCareerDatabase } from "../storage/DatabaseFactory";
+import { SaveManager, type SaveRecord, type SaveTrigger } from "../storage/SaveManager";
+import { IndexedDbSaveStorage } from "../storage/IndexedDbSaveStorage";
+import { exportSqliteSnapshot, restoreSqliteSnapshot } from "../storage/SqliteSnapshotService";
 import { CapacitorSQLiteDatabase } from "../storage/CapacitorSQLiteDatabase";
 import type { IDatabase } from "../storage/IDatabase";
 import RaceWorkbench from "./RaceWorkbench";
@@ -116,6 +119,19 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
   return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, car: cars[0] ?? null, developmentProjects, developmentHistory };
+}
+
+async function openCareerSlot(slot: SaveSlot): Promise<{ database: IDatabase; dashboard: DashboardData }> {
+  const database = await openCareerDatabase(slot.dbName);
+  try {
+    const teams = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [slot.careerId]);
+    if (!teams[0]) throw new Error("Save slot ini tidak memiliki tim pemain.");
+    const dashboard = await loadDashboard(database, slot.careerId, String(teams[0].team_id), slot.tier);
+    return { database, dashboard };
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 async function upsertDriverStanding(
@@ -338,6 +354,11 @@ export default function CareerMode() {
   const [raceError, setRaceError] = useState("");
   const [lastRace, setLastRace] = useState<RaceWeekendResult | null>(null);
   const [showQa, setShowQa] = useState(false);
+  const [snapshotError, setSnapshotError] = useState("");
+  const saveManager = useMemo(() => {
+    try { return new SaveManager(new IndexedDbSaveStorage()); }
+    catch { return null; }
+  }, []);
   const [marketDrivers, setMarketDrivers] = useState<Row[]>([]);
   const [marketSeatsAvailable, setMarketSeatsAvailable] = useState(false);
   const [marketDriverId, setMarketDriverId] = useState("");
@@ -428,6 +449,22 @@ export default function CareerMode() {
     setDashboard(data);
   }, []);
 
+  async function persistSnapshot(db: IDatabase, slot: SaveSlot, trigger: SaveTrigger, isSandbox: boolean): Promise<boolean> {
+    if (!saveManager) {
+      setSnapshotError("Backup otomatis tidak tersedia di runtime ini. Career tetap tersimpan di SQLite lokal.");
+      return false;
+    }
+    try {
+      const data = await exportSqliteSnapshot(db);
+      await saveManager.save({ slotId: slot.dbName, careerId: slot.careerId, data, trigger, isSandbox });
+      setSnapshotError("");
+      return true;
+    } catch (caught) {
+      setSnapshotError("Backup snapshot gagal: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui") + ". Save SQLite utama tetap tersimpan.");
+      return false;
+    }
+  }
+
   async function createCareer() {
     if (!catalog) return;
     if (readSaveSlots().length >= 2) {
@@ -459,6 +496,7 @@ export default function CareerMode() {
         const playerTeam = (await db.query("SELECT team_id, name FROM teams WHERE career_id = ? AND is_player_team = 1;", [result.careerId]))[0];
         if (!playerTeam) throw new Error("Tim pemain tidak ditemukan setelah world generation.");
         const slot: SaveSlot = { dbName, careerId: result.careerId, managerName, teamName: String(playerTeam.name), tier: result.selectedTier, savedAt: new Date().toISOString() };
+        await persistSnapshot(db, slot, "manual", false);
         const nextSlots = [slot, ...readSaveSlots().filter((item) => item.dbName !== dbName)].slice(0, 2);
         writeSaveSlots(nextSlots); setSaveSlots(nextSlots); setActiveSave(slot); setGeneration(result);
         setDatabase(db); setDashboard(await loadDashboard(db, result.careerId, result.playerTeamId, result.selectedTier)); setTab("overview");
@@ -489,6 +527,12 @@ export default function CareerMode() {
       const nextSlots = readSaveSlots().filter((item) => item.dbName !== slot.dbName);
       writeSaveSlots(nextSlots);
       setSaveSlots(nextSlots);
+      if (saveManager) {
+        try { await saveManager.deleteSlot(slot.dbName); }
+        catch (caught) {
+          setError("Career berhasil dihapus, tetapi sebagian backup belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui"));
+        }
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Save gagal dihapus; data tidak dihapus dari daftar.");
     }
@@ -496,16 +540,71 @@ export default function CareerMode() {
 
   async function resumeCareer(slot: SaveSlot) {
     setError("");
+    setSnapshotError("");
     setCreating(true);
     try {
-      const db = await openCareerDatabase(slot.dbName);
-      const teams = await db.query("SELECT team_id, name FROM teams WHERE career_id = ? AND is_player_team = 1;", [slot.careerId]);
-      if (!teams[0]) { await db.close(); throw new Error("Save slot ini tidak memiliki tim pemain."); }
-      setDatabase(db); setActiveSave(slot); setGeneration(null);
-      setDashboard(await loadDashboard(db, slot.careerId, String(teams[0].team_id), slot.tier)); setTab("overview");
+      let opened: { database: IDatabase; dashboard: DashboardData };
+      let activeSlot = slot;
+      try {
+        opened = await openCareerSlot(slot);
+      } catch (initialError) {
+        if (!saveManager) throw initialError;
+        const candidates: { record: SaveRecord; backup: "backup-1" | "backup-2" | null }[] = [];
+        try {
+          const current = await saveManager.load(slot.dbName, slot.careerId);
+          if (current) candidates.push({ record: current, backup: null });
+        } catch { /* try the rotating backups below */ }
+        for (const backup of ["backup-1", "backup-2"] as const) {
+          try { candidates.push({ record: await saveManager.loadBackup(slot.dbName, slot.careerId, backup), backup }); }
+          catch { /* invalid or missing backup; try the next candidate */ }
+        }
+        let recovered: { database: IDatabase; dashboard: DashboardData; slot: SaveSlot; warning: string } | null = null;
+        let recoveryError = "";
+        let recoveredFrom = "current snapshot";
+        const recoveryDbName = slot.dbName + "_recovered";
+        for (const candidate of candidates) {
+          let recoveryDb: IDatabase | null = null;
+          try {
+            await CapacitorSQLiteDatabase.removeDatabase(recoveryDbName).catch(() => undefined);
+            recoveryDb = await openCareerDatabase(recoveryDbName);
+            await restoreSqliteSnapshot(recoveryDb, candidate.record.data);
+            const teams = await recoveryDb.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [slot.careerId]);
+            if (!teams[0]) throw new Error("Snapshot tidak memiliki tim pemain.");
+            const restoredDashboard = await loadDashboard(recoveryDb, slot.careerId, String(teams[0].team_id), slot.tier);
+            const restoredSlot: SaveSlot = { ...slot, dbName: recoveryDbName, savedAt: new Date().toISOString() };
+            const snapshotSaved = await persistSnapshot(recoveryDb, restoredSlot, "manual", field(restoredDashboard.career, "game_mode") === "sandbox");
+            const recoveryWarnings: string[] = snapshotSaved ? [] : ["snapshot baru gagal disimpan"];
+            const nextSlots = readSaveSlots().map((item) => item.dbName === slot.dbName ? restoredSlot : item);
+            writeSaveSlots(nextSlots);
+            setSaveSlots(nextSlots);
+            try { await CapacitorSQLiteDatabase.removeDatabase(slot.dbName); }
+            catch (caught) { recoveryWarnings.push("database lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            try { await saveManager.deleteSlot(slot.dbName); }
+            catch (caught) { recoveryWarnings.push("backup lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            recoveredFrom = candidate.backup ?? "current snapshot";
+            recovered = { database: recoveryDb, dashboard: restoredDashboard, slot: restoredSlot, warning: recoveryWarnings.join("; ") };
+            break;
+          } catch (caught) {
+            if (recoveryDb) await recoveryDb.close().catch(() => undefined);
+            await CapacitorSQLiteDatabase.removeDatabase(recoveryDbName).catch(() => undefined);
+            recoveryError = caught instanceof Error ? caught.message : "kesalahan restore tidak diketahui";
+          }
+        }
+        if (!recovered) {
+          throw new Error("Save tidak bisa dibuka (" + (initialError instanceof Error ? initialError.message : "database tidak valid") +
+            "). Pemulihan backup gagal" + (recoveryError ? ": " + recoveryError : "; tidak ada snapshot valid") + ".");
+        }
+        opened = { database: recovered.database, dashboard: recovered.dashboard };
+        activeSlot = recovered.slot;
+        setSnapshotError("Save dipulihkan ke database baru dari " + recoveredFrom + ". Periksa career sebelum melanjutkan." + (recovered.warning ? " Peringatan: " + recovered.warning + "." : ""));
+      }
+      setDatabase(opened.database);
+      setActiveSave(activeSlot);
+      setGeneration(null);
+      setDashboard(opened.dashboard);
+      setTab("overview");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Save tidak bisa dibuka.");
-      setSaveSlots(readSaveSlots().filter((item) => item.dbName !== slot.dbName));
     } finally { setCreating(false); }
   }
 
@@ -530,6 +629,7 @@ export default function CareerMode() {
           await database.run("UPDATE sponsor_offers SET status = 'declined' WHERE offer_id = ? AND status = 'offered';", [offerId]);
         }
       });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard?.career, "game_mode") === "sandbox");
       const playerTeamId = String(dashboard?.team.team_id ?? "");
       setDashboard(await loadDashboard(database, activeSave.careerId, playerTeamId, activeSave.tier));
     } catch (caught) {
@@ -542,6 +642,7 @@ export default function CareerMode() {
     setFacilityBusy(true); setFacilityError("");
     try {
       await upgradeTeamFacility(database, { teamId: String(dashboard.team.team_id), facility, season: numberField(dashboard.career, "current_season", 1) });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setFacilityError(caught instanceof Error ? caught.message : "Upgrade fasilitas gagal.");
@@ -561,6 +662,7 @@ export default function CareerMode() {
         size: developmentSize,
         worldSeed: String(dashboard.career.world_seed),
       });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setDevelopmentError(caught instanceof Error ? caught.message : "Project development gagal dimulai.");
@@ -580,6 +682,7 @@ export default function CareerMode() {
         tier: activeSave.tier,
       });
       setDevelopmentError("Project dibatalkan. Refund: " + formatCash(refund) + ".");
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setDevelopmentError(caught instanceof Error ? caught.message : "Project tidak dapat dibatalkan.");
@@ -601,6 +704,7 @@ export default function CareerMode() {
         signingBonus: Number(marketBonus),
         role: marketRole,
       });
+      await persistSnapshot(database, activeSave, result.decision === "accepted" ? "contract-signed" : "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setMarketResult(result);
       if (result.decision === "counter-offer" && result.counterOffer) {
         setMarketSalary(String(result.counterOffer.salary));
@@ -623,6 +727,7 @@ export default function CareerMode() {
     setSettlingSeason(true); setSettlementError("");
     try {
       await settleCareerSeason(database, { careerId: activeSave.careerId, season: numberField(dashboard.career, "current_season", 1), tier: activeSave.tier });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "Season settlement gagal; transaksi dibatalkan.");
@@ -634,6 +739,7 @@ export default function CareerMode() {
     setRunningRace(true); setRaceError(""); setLastRace(null);
     try {
       const result = await simulateNextRace(database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""));
+      await persistSnapshot(database, activeSave, "race-completed", field(dashboard?.career, "game_mode") === "sandbox");
       setLastRace(result);
       setDashboard(await loadDashboard(database, activeSave.careerId, (await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [activeSave.careerId]))[0]?.team_id as string, activeSave.tier));
     } catch (caught) {
@@ -678,6 +784,7 @@ export default function CareerMode() {
         <div className="career-brand"><span className="brand-mark">PL</span><div><small>CAREER MODE</small><strong>PADDOCK LIFE</strong></div></div>
         <button className="secondary-button" onClick={() => void leaveCareer()}>Main Menu</button>
       </header>
+      {snapshotError && <section className="career-panel snapshot-warning"><p className="inline-error">{snapshotError}</p></section>}
       <section className="career-team-hero">
         <div><p className="eyebrow">SEASON {numberField(dashboard.career, "current_season", 1)} · TIER {activeSave.tier}</p><h1>{field(team, "name", activeSave.teamName)}</h1><p>{TIER_CONFIG[activeSave.tier].name} · {field(team, "personality", "Team")}</p></div>
         <div className="cash-card"><small>TEAM CASH</small><strong>{formatCash(numberField(team, "cash"))}</strong><span>Debt {formatCash(numberField(team, "debt"))}</span></div>

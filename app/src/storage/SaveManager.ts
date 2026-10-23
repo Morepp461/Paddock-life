@@ -76,7 +76,16 @@ export class SaveManager {
     if (current) {
       await this.verifyRecord(current, input.slotId, input.careerId);
       const backup1 = await this.storage.read(input.slotId, "backup-1");
-      if (backup1) await this.storage.writeAtomic(input.slotId, "backup-2", backup1);
+      let backup1IsValid = false;
+      if (backup1) {
+        try {
+          await this.verifyRecord(backup1, input.slotId, input.careerId);
+          backup1IsValid = true;
+        } catch {
+          // Do not propagate a corrupt backup into the older-backup slot.
+        }
+      }
+      if (backup1 && backup1IsValid) await this.storage.writeAtomic(input.slotId, "backup-2", backup1);
       else await this.storage.delete(input.slotId, "backup-2");
       await this.storage.writeAtomic(input.slotId, "backup-1", current);
     }
@@ -104,16 +113,26 @@ export class SaveManager {
     return { ...record, data: new Uint8Array(record.data) };
   }
 
-  async restoreBackup(slotId: string, careerId: string, backup: "backup-1" | "backup-2"): Promise<SaveRecord> {
+  async loadBackup(slotId: string, careerId: string, backup: "backup-1" | "backup-2"): Promise<SaveRecord> {
     validateSlotId(slotId);
     const record = await this.storage.read(slotId, backup);
     if (!record) throw new Error("Backup save tidak ditemukan.");
     await this.verifyRecord(record, slotId, careerId);
+    return { ...record, data: new Uint8Array(record.data) };
+  }
+
+  async restoreBackup(slotId: string, careerId: string, backup: "backup-1" | "backup-2"): Promise<SaveRecord> {
+    const record = await this.loadBackup(slotId, careerId, backup);
 
     const current = await this.storage.read(slotId, "current");
     if (current) {
-      await this.verifyRecord(current, slotId, careerId);
-      await this.storage.writeAtomic(slotId, "backup-1", current);
+      try {
+        await this.verifyRecord(current, slotId, careerId);
+        await this.storage.writeAtomic(slotId, "backup-1", current);
+      } catch {
+        // A corrupt current snapshot must never prevent restoring a verified backup
+        // or overwrite an existing known-good backup.
+      }
     }
     const restored: SaveRecord = {
       ...record,
@@ -124,6 +143,13 @@ export class SaveManager {
     };
     await this.storage.writeAtomic(slotId, "current", restored);
     return restored;
+  }
+
+  async deleteSlot(slotId: string): Promise<void> {
+    validateSlotId(slotId);
+    for (const key of SAVE_KEYS) {
+      await this.storage.delete(slotId, key);
+    }
   }
 
   async verifyRecord(record: SaveRecord, slotId: string, careerId: string): Promise<void> {
