@@ -4,11 +4,9 @@ import { generateSeasonCalendar, type CalendarCircuit } from "./SeasonCalendar";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "./ContractNegotiationEngine";
 import { offerDriverContract } from "./CareerContractService";
 import { hashSeed } from "./RandomDistributions";
-import { INITIAL_DISTRIBUTIONS } from "./InitialDistributions";
 import { generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
 
-type Row = Readonly<Record<string, unknown>>;
 type Tier = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface WorldSeasonRolloverResult {
