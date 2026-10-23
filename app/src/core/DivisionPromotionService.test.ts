@@ -103,8 +103,9 @@ describe("player division promotion choices", () => {
       });
       expect(resolved.promoted).toBe(true);
       expect(resolved.tier).toBe(4);
-      const player = await database.query("SELECT division_id FROM teams WHERE team_id = ?;", [teamId]);
-      expect(player).toEqual([{ division_id: "T4" }]);
+      const player = await database.query("SELECT division_id, budget FROM teams WHERE team_id = ?;", [teamId]);
+      expect(player).toEqual([{ division_id: "T4", budget: 15_000_000 }]);
+      expect(await database.query("SELECT budget FROM teams WHERE team_id = ?;", [resolved.exchangedTeamId])).toEqual([{ budget: 6_000_000 }]);
       const counts = await database.query(
         "SELECT division_id, COUNT(*) AS count FROM teams WHERE career_id = ? AND is_active = 1 AND division_id IN ('T4','T5') GROUP BY division_id ORDER BY division_id;",
         [career.careerId],
