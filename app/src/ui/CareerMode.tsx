@@ -908,10 +908,14 @@ export default function CareerMode() {
       const result = await simulateNextRace(database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""), raceCompound);
       const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [activeSave.careerId]);
       if (playerTeamRows[0]) {
-        await checkBoardObjectiveMidseason(database, {
-          careerId: activeSave.careerId, teamId: String(playerTeamRows[0].team_id),
-          season: numberField(seasonRows[0], "current_season", 1), tier: activeSave.tier,
-        });
+        try {
+          await checkBoardObjectiveMidseason(database, {
+            careerId: activeSave.careerId, teamId: String(playerTeamRows[0].team_id),
+            season: numberField(seasonRows[0], "current_season", 1), tier: activeSave.tier,
+          });
+        } catch (boardError) {
+          setRaceError("Race selesai, tetapi pemeriksaan Board Objective gagal: " + (boardError instanceof Error ? boardError.message : "error tidak diketahui") + ".");
+        }
       }
       await persistSnapshot(database, activeSave, "race-completed", field(dashboard?.career, "game_mode") === "sandbox");
       setLastRace(result);
