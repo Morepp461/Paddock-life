@@ -103,8 +103,8 @@ export async function checkBoardObjectiveMidseason(
   const forecastRank = index + 1;
   const atRisk = forecastRank > targetRank;
   const message = atRisk
-    ? "Board Objective at risk — " + checkpointPercent + "% season selesai. Proyeksi posisi P" + forecastRank + ", target minimal P" + targetRank + "."
-    : "Board Objective on track — " + checkpointPercent + "% season selesai. Proyeksi posisi P" + forecastRank + ", target minimal P" + targetRank + ".";
+    ? "Board Objective at risk — " + checkpointPercent + "% season selesai. Posisi saat ini P" + forecastRank + ", target minimal P" + targetRank + "."
+    : "Board Objective on track — " + checkpointPercent + "% season selesai. Posisi saat ini P" + forecastRank + ", target minimal P" + targetRank + ".";
   const warning: BoardObjectiveMidseasonWarning = {
     careerId: input.careerId, teamId: input.teamId, season: input.season, checkpointPercent,
     completedRounds, totalRounds, targetRank, forecastRank, atRisk, message,
