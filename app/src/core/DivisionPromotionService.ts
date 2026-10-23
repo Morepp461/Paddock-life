@@ -90,12 +90,14 @@ export async function prepareDivisionPromotionOffer(
     return null;
   }
 
+  // Championship rank is based on the completed season's original division,
+  // not the post-season financial movement placements.
   const standings = await database.query(
-    `SELECT t.team_id, COALESCE(s.points, 0) AS points, COALESCE(s.wins, 0) AS wins
-     FROM teams t LEFT JOIN standings s ON s.team_id = t.team_id AND s.season = ? AND s.division_id = ? AND s.driver_id IS NULL
-     WHERE t.career_id = ? AND t.division_id = ? AND t.is_active = 1
-     ORDER BY points DESC, wins DESC, t.team_id ASC;`,
-    [input.completedSeason, "T" + currentTier, input.careerId, "T" + currentTier],
+    `SELECT t.team_id, s.points, s.wins
+     FROM standings s JOIN teams t ON t.team_id = s.team_id
+     WHERE t.career_id = ? AND s.season = ? AND s.division_id = ? AND s.driver_id IS NULL
+     ORDER BY s.points DESC, s.wins DESC, t.team_id ASC;`,
+    [input.careerId, input.completedSeason, "T" + currentTier],
   );
   if (standings.length !== 12) throw new Error("Keputusan promosi membutuhkan 12 tim aktif di divisi pemain.");
   const champion = String(standings[0]?.team_id) === teamId;
