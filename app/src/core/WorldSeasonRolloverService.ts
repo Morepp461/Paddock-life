@@ -4,7 +4,7 @@ import { generateSeasonCalendar, type CalendarCircuit } from "./SeasonCalendar";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "./ContractNegotiationEngine";
 import { offerDriverContract } from "./CareerContractService";
 import { hashSeed } from "./RandomDistributions";
-import { evaluateAgeAndRetirement } from "./AgeAndRetireEngine";
+import { evaluateAgeAndRetirement, evaluateStaffCandidateOutcome, hasTwoSeasonsWithoutTeam } from "./AgeAndRetireEngine";
 import { generateSeasonFreeAgentDriver, generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
 import { createBoardObjectivesForTeam, createManagerJobOffers, resolveBoardObjectivesForSeason } from "./BoardObjectiveService";
@@ -19,6 +19,7 @@ export interface WorldSeasonRolloverResult {
   readonly carsCreated: number;
   readonly aiTeamsReady: number;
   readonly driversRetiredByAge: number;
+  readonly driversRetiredForNoTeam: number;
   readonly financialMovements: number;
   readonly tier6ReplacementTeams: number;
   readonly managerFired: boolean;
@@ -324,7 +325,7 @@ async function prepareAiRoster(
       // If the existing market cannot fill the grid, create source-distributed rookies
       // and negotiate with them using the same contract rules as other free agents.
       if (seatCount < 2 && n(team, "cash") >= 0) {
-        for (let attempt = 0; attempt < 20 && seatCount < 2; attempt += 1) {
+        for (let attempt = 0; attempt < 100 && seatCount < 2; attempt += 1) {
           const driverId = await generateSeasonFreeAgentDriver(database, {
             careerId: input.careerId,
             tier: tier as Exclude<TierId, 6>,
@@ -454,26 +455,48 @@ export async function rollWorldSeasonForward(
     }
     const exclusions = [...newDriverIds];
     const driverRows = await database.query(
-      `SELECT d.driver_id, d.age,
+      `SELECT d.driver_id, d.age, d.created_season,
         COALESCE((
           SELECT t.division_id FROM driver_contracts dc
           JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id
           WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
           ORDER BY dc.end_season DESC, t.team_id LIMIT 1
-        ), 'T1') AS division_id
+        ), 'T1') AS division_id,
+        EXISTS(SELECT 1 FROM driver_contracts dc JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?) AS has_team_this_season,
+        EXISTS(SELECT 1 FROM driver_contracts dc JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id AND t.is_active = 1 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?) AS had_team_previous_season
        FROM drivers d
        WHERE d.career_id = ? AND d.is_retired = 0${exclusions.length ? " AND d.driver_id NOT IN (" + exclusions.map(() => "?").join(",") + ")" : ""}
        ORDER BY d.driver_id;`,
-      [input.completedSeason, input.completedSeason, input.careerId, ...exclusions],
+      [input.completedSeason, input.completedSeason,
+        input.completedSeason, input.completedSeason,
+        input.completedSeason - 1, input.completedSeason - 1,
+        input.careerId, ...exclusions],
     );
     const decisions = driverRows.map((row) => {
+      const driverId = String(row.driver_id);
       const tierValue = Number(String(row.division_id).replace(/^T/, ""));
       const tier = ([1, 2, 3, 4, 5, 6].includes(tierValue) ? tierValue : 1) as Tier;
-      return evaluateAgeAndRetirement({
+      const ageDecision = evaluateAgeAndRetirement({
         worldSeed: String(career.world_seed), season: nextSeason,
-        entityId: String(row.driver_id), kind: "driver", age: n(row, "age"), tier,
+        entityId: driverId, kind: "driver", age: n(row, "age"), tier,
       });
-    }).filter((decision) => decision.shouldRetire);
+      const noTeamRetirement = hasTwoSeasonsWithoutTeam({
+        createdSeason: row.created_season === null || row.created_season === undefined ? null : n(row, "created_season"),
+        completedSeason: input.completedSeason,
+        hasTeamThisSeason: n(row, "has_team_this_season") === 1,
+        hadTeamPreviousSeason: n(row, "had_team_previous_season") === 1,
+      });
+      if (!ageDecision.shouldRetire && !noTeamRetirement) return null;
+      return {
+        ...ageDecision,
+        shouldRetire: true,
+        reason: noTeamRetirement ? "no_team" as const : "age" as const,
+        retirementProbability: noTeamRetirement ? 1 : ageDecision.retirementProbability,
+        becomesStaff: noTeamRetirement
+          ? evaluateStaffCandidateOutcome({ worldSeed: String(career.world_seed), season: nextSeason, entityId: driverId })
+          : ageDecision.becomesStaff,
+      };
+    }).filter((decision) => decision !== null);
     await database.transaction(async () => {
       const recheck = await database.query(
         "SELECT step FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
@@ -482,21 +505,26 @@ export async function rollWorldSeasonForward(
       if (recheck.length) return;
       for (const decision of decisions) {
         await database.run(
-          "UPDATE drivers SET age = ?, is_retired = 1, retire_reason = 'age' WHERE driver_id = ? AND career_id = ? AND is_retired = 0;",
-          [decision.ageAfter, decision.entityId, input.careerId],
+          "UPDATE drivers SET age = ?, is_retired = 1, retire_reason = ? WHERE driver_id = ? AND career_id = ? AND is_retired = 0;",
+          [decision.ageAfter, decision.reason, decision.entityId, input.careerId],
+        );
+        await database.run(
+          "UPDATE driver_contracts SET end_season = ? WHERE driver_id = ? AND start_season <= ? AND end_season >= ?;",
+          [input.completedSeason, decision.entityId, nextSeason, nextSeason],
         );
         await database.run(
           `INSERT INTO driver_retirement_events
             (career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'age');`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
           [input.careerId, decision.entityId, nextSeason, decision.previousAge, decision.ageAfter,
-            decision.retirementProbability, decision.becomesStaff ? 1 : 0],
+            decision.retirementProbability, decision.becomesStaff ? 1 : 0, decision.reason],
         );
       }
       await database.run(
         "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
         [input.careerId, nextSeason, retirementStep, JSON.stringify({
-          driversRetiredByAge: decisions.length,
+          driversRetiredByAge: decisions.filter((decision) => decision.reason === "age").length,
+          driversRetiredForNoTeam: decisions.filter((decision) => decision.reason === "no_team").length,
           staffCandidates: decisions.filter((decision) => decision.becomesStaff).map((decision) => decision.entityId),
           evaluatedDrivers: driverRows.length,
           excludedNewDriverIds: exclusions,
@@ -523,14 +551,16 @@ export async function rollWorldSeasonForward(
 
   const ageStep = "age-progression";
   let driversRetiredByAge = 0;
+  let driversRetiredForNoTeam = 0;
   const retirementStateRows = await database.query(
     "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
     [input.careerId, nextSeason, retirementStep],
   );
   const retirementState = JSON.parse(String(retirementStateRows[0]?.result_json ?? "{}")) as {
-    driversRetiredByAge?: number; excludedNewDriverIds?: unknown;
+    driversRetiredByAge?: number; driversRetiredForNoTeam?: number; excludedNewDriverIds?: unknown;
   };
   driversRetiredByAge = Number(retirementState.driversRetiredByAge ?? 0);
+  driversRetiredForNoTeam = Number(retirementState.driversRetiredForNoTeam ?? 0);
   if (!(await markerExists(database, input.careerId, nextSeason, ageStep))) {
     const replacementRows = await database.query(
       "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'tier6-replacement';",
@@ -571,7 +601,7 @@ export async function rollWorldSeasonForward(
       await database.run(
         "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
         [input.careerId, nextSeason, ageStep, JSON.stringify({
-          driversRetiredByAge, excludedNewDriverIds: exclusions,
+          driversRetiredByAge, driversRetiredForNoTeam, excludedNewDriverIds: exclusions,
         })],
       );
     });
@@ -592,6 +622,7 @@ export async function rollWorldSeasonForward(
       carsCreated: infrastructure.carsCreated,
       aiTeamsReady: roster.aiTeamsReady,
       driversRetiredByAge,
+      driversRetiredForNoTeam,
       financialMovements: worldTransition.movementEvents.length,
       tier6ReplacementTeams: worldTransition.replacementTeamsCreated,
       managerFired: boardResolution.managerFired,
@@ -611,6 +642,7 @@ export async function rollWorldSeasonForward(
     carsCreated: infrastructure.carsCreated,
     aiTeamsReady: roster.aiTeamsReady,
     driversRetiredByAge,
+    driversRetiredForNoTeam,
     financialMovements: worldTransition.movementEvents.length,
     tier6ReplacementTeams: worldTransition.replacementTeamsCreated,
     managerFired: boardResolution.managerFired,

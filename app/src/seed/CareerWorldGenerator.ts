@@ -158,13 +158,13 @@ async function insertDriver(
       (driver_id, career_id, name, pace, qualifying, racecraft, consistency, wet_skill, tyre_management,
        overtaking, defending, starts, adaptability, focus, pressure, morale, confidence, aggression, teamwork,
        potential, development_rate, injury_resistance, loyalty, ambition, fan_popularity, age, nationality,
-       name_culture, is_retired, reputation, market_value, is_academy_driver, gender)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?);`,
+       name_culture, is_retired, reputation, market_value, is_academy_driver, gender, created_season)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?);`,
     [driverId, input.careerId, generated.fullName, values.pace, values.qualifying, values.racecraft, values.consistency,
       values.wet_skill, values.tyre_management, values.overtaking, values.defending, values.starts, values.adaptability,
       values.focus, values.pressure, values.morale, values.confidence, values.aggression, values.teamwork, values.potential,
       values.development_rate, values.injury_resistance, values.loyalty, values.ambition, values.fan_popularity, age,
-      generated.countryCode, generated.cultureId, Math.round(overall * 100), marketValue, input.academy ? 1 : 0, generated.gender],
+      generated.countryCode, generated.cultureId, Math.round(overall * 100), marketValue, input.academy ? 1 : 0, generated.gender, input.season ?? 1],
   );
   if (input.teamId) {
     const rb = TIER_CONFIG[input.tier].requiredBudget;

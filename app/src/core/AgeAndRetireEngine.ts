@@ -26,6 +26,34 @@ export interface AgeAndRetireResult {
   readonly becomesStaff: boolean;
 }
 
+export function evaluateStaffCandidateOutcome(input: {
+  readonly worldSeed: string | number;
+  readonly season: number;
+  readonly entityId: string;
+}): boolean {
+  if (!input.entityId.trim()) throw new Error("Entity ID wajib diisi.");
+  if (!Number.isSafeInteger(input.season) || input.season < 1) throw new RangeError("Season harus integer positif.");
+  return new SeededRandom(hashSeed([input.worldSeed, input.season, input.entityId, "retirement-to-staff"])).next() < 0.4;
+}
+
+export function hasTwoSeasonsWithoutTeam(input: {
+  readonly createdSeason: number | null;
+  readonly completedSeason: number;
+  readonly hasTeamThisSeason: boolean;
+  readonly hadTeamPreviousSeason: boolean;
+}): boolean {
+  if (!Number.isSafeInteger(input.completedSeason) || input.completedSeason < 1) {
+    throw new RangeError("Completed season harus integer positif.");
+  }
+  if (input.createdSeason !== null && (!Number.isSafeInteger(input.createdSeason) || input.createdSeason < 1)) {
+    throw new RangeError("Created season harus null atau integer positif.");
+  }
+  return input.createdSeason !== null
+    && input.createdSeason <= input.completedSeason - 1
+    && !input.hasTeamThisSeason
+    && !input.hadTeamPreviousSeason;
+}
+
 /** Source: Career Rules §5 and PRD age bands. All random outcomes are save-seeded. */
 export function evaluateAgeAndRetirement(input: AgeAndRetireInput): AgeAndRetireResult {
   if (!input.entityId.trim()) throw new Error("Entity ID wajib diisi.");
@@ -48,7 +76,7 @@ export function evaluateAgeAndRetirement(input: AgeAndRetireInput): AgeAndRetire
   const shouldRetire = input.kind !== "player-manager"
     && (mandatoryRetirement || random.next() < retirementProbability);
   const becomesStaff = shouldRetire && input.kind === "driver"
-    && new SeededRandom(hashSeed([input.worldSeed, input.season, input.entityId, "retirement-to-staff"])).next() < 0.4;
+    && evaluateStaffCandidateOutcome({ worldSeed: input.worldSeed, season: input.season, entityId: input.entityId });
 
   let outsideCurrentTierAgeBand = false;
   if (input.kind === "driver" && input.tier !== undefined) {

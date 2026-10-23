@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateAgeAndRetirement } from "./AgeAndRetireEngine";
+import { evaluateAgeAndRetirement, evaluateStaffCandidateOutcome, hasTwoSeasonsWithoutTeam } from "./AgeAndRetireEngine";
 
 describe("age and retirement engine", () => {
   it("ages entities once and applies the documented driver retirement probability", () => {
@@ -46,6 +46,30 @@ describe("age and retirement engine", () => {
     });
     expect(player.ageAfter).toBe(81);
     expect(player.shouldRetire).toBe(false);
+  });
+
+  it("retires a driver only after two full seasons without a team", () => {
+    expect(hasTwoSeasonsWithoutTeam({
+      createdSeason: 1, completedSeason: 1, hasTeamThisSeason: false, hadTeamPreviousSeason: false,
+    })).toBe(false);
+    expect(hasTwoSeasonsWithoutTeam({
+      createdSeason: 2, completedSeason: 2, hasTeamThisSeason: false, hadTeamPreviousSeason: false,
+    })).toBe(false);
+    expect(hasTwoSeasonsWithoutTeam({
+      createdSeason: 1, completedSeason: 2, hasTeamThisSeason: false, hadTeamPreviousSeason: false,
+    })).toBe(true);
+    expect(hasTwoSeasonsWithoutTeam({
+      createdSeason: 1, completedSeason: 2, hasTeamThisSeason: true, hadTeamPreviousSeason: false,
+    })).toBe(false);
+    expect(hasTwoSeasonsWithoutTeam({
+      createdSeason: null, completedSeason: 5, hasTeamThisSeason: false, hadTeamPreviousSeason: false,
+    })).toBe(false);
+  });
+
+  it("uses a deterministic 40% staff-candidate roll", () => {
+    const input = { worldSeed: "retirement-candidate-test", season: 4, entityId: "driver-22" };
+    expect(evaluateStaffCandidateOutcome(input)).toBe(evaluateStaffCandidateOutcome(input));
+    expect(() => evaluateStaffCandidateOutcome({ ...input, season: 0 })).toThrow("Season harus");
   });
 
   it("rejects missing driver tier and invalid input", () => {

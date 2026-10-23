@@ -602,6 +602,33 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     `,
   },
   {
+    version: 16,
+    description: "track driver career entry season and no-team retirement",
+    sql: `
+      ALTER TABLE drivers ADD COLUMN created_season INTEGER CHECK (created_season IS NULL OR created_season >= 1);
+      ALTER TABLE driver_retirement_events RENAME TO driver_retirement_events_v15;
+      CREATE TABLE driver_retirement_events (
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 2),
+        previous_age INTEGER NOT NULL CHECK (previous_age >= 0),
+        age_after INTEGER NOT NULL CHECK (age_after > previous_age),
+        retirement_probability REAL NOT NULL CHECK (retirement_probability BETWEEN 0 AND 1),
+        became_staff_candidate INTEGER NOT NULL CHECK (became_staff_candidate IN (0, 1)),
+        reason TEXT NOT NULL CHECK (reason IN ('age', 'no_team')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (career_id, driver_id, season)
+      );
+      INSERT INTO driver_retirement_events
+        (career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason, created_at)
+      SELECT career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason, created_at
+      FROM driver_retirement_events_v15;
+      DROP TABLE driver_retirement_events_v15;
+      CREATE INDEX idx_driver_retirement_events_season
+        ON driver_retirement_events(career_id, season, became_staff_candidate);
+    `,
+  },
+  {
     version: 14,
     description: "persist player division unlock and promotion choices",
     sql: `
