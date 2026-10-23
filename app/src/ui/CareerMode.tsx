@@ -799,7 +799,21 @@ export default function CareerMode() {
         completedSeason: season,
       });
       await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
-      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+      const playerTeamAfterRollover = (await database.query(
+        "SELECT team_id, name, division_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1 LIMIT 1;",
+        [activeSave.careerId],
+      ))[0];
+      if (!playerTeamAfterRollover) throw new Error("Tim pemain tidak ditemukan setelah financial division movement.");
+      const nextTier = tierFromValue(field(playerTeamAfterRollover, "division_id"));
+      const nextSave = {
+        ...activeSave,
+        teamName: field(playerTeamAfterRollover, "name", activeSave.teamName),
+        tier: nextTier,
+        savedAt: new Date().toISOString(),
+      };
+      setActiveSave(nextSave);
+      writeSaveSlots(readSaveSlots().map((slot) => slot.dbName === nextSave.dbName ? nextSave : slot));
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(playerTeamAfterRollover.team_id), nextTier));
       setSeasonProgress("Season " + rollover.currentSeason + " is ready: " + rollover.aiTeamsReady + " AI teams have valid race rosters, " + rollover.financialMovements + " financial movements, " + rollover.tier6ReplacementTeams + " Tier 6 replacements.");
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "World season gagal diselesaikan; periksa status race dan settlement.");
