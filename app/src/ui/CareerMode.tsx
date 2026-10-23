@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
-import { getCompoundPaceResult, type TrackCondition, type TyreCompound } from "../core/TyreEngine";
+import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
+import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
@@ -46,32 +47,6 @@ type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "spons
 const SAVE_INDEX_KEY = "paddock-life-save-slots-v1";
 const TIER_PICKER = [5, 4, 3, 2, 1] as const;
 
-const TRACK_CONDITIONS: readonly TrackCondition[] = ["dry", "damp", "wet", "heavy-wet"];
-
-function parseTrackCondition(value: unknown): TrackCondition {
-  const condition = String(value ?? "dry");
-  if (!TRACK_CONDITIONS.includes(condition as TrackCondition)) {
-    throw new Error("Kondisi lintasan tidak dikenal: " + condition);
-  }
-  return condition as TrackCondition;
-}
-
-function availableTyreCompounds(tier: TierId, condition: TrackCondition): TyreCompound[] {
-  const config = TIER_CONFIG[tier];
-  return [...config.allowedDryCompounds, ...config.allowedWetCompounds]
-    .filter((compound) => getCompoundPaceResult({ compound, trackCondition: condition }).usable);
-}
-
-function recommendedTyreCompound(tier: TierId, condition: TrackCondition): TyreCompound {
-  const config = TIER_CONFIG[tier];
-  if (condition === "dry") return config.allowedDryCompounds[0]!;
-  if (condition === "heavy-wet") {
-    return config.allowedWetCompounds.find((compound) => compound === "wet")
-      ?? config.allowedWetCompounds[0] ?? config.allowedDryCompounds[0]!;
-  }
-  return config.allowedWetCompounds.find((compound) => compound === "intermediate")
-    ?? config.allowedWetCompounds[0] ?? config.allowedDryCompounds[0]!;
-}
 
 function readSaveSlots(): SaveSlot[] {
   try {
