@@ -119,7 +119,7 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
 
 async function upsertDriverStanding(
   database: IDatabase, tier: TierId, season: number, raceId: string, driverId: string,
-  points: number, wins = 0, podiums = 0, fastestLaps = 0,
+  points: number, wins = 0, podiums = 0, fastestLaps = 0, poles = 0,
 ): Promise<void> {
   const prior = await database.query(
     "SELECT standing_id FROM standings WHERE season = ? AND division_id = ? AND driver_id = ? AND team_id IS NULL;",
@@ -127,13 +127,13 @@ async function upsertDriverStanding(
   );
   if (prior[0]) {
     await database.run(
-      "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ?, fastest_laps = fastest_laps + ? WHERE standing_id = ?;",
-      [points, wins, podiums, fastestLaps, String(prior[0].standing_id)],
+      "UPDATE standings SET points = points + ?, wins = wins + ?, podiums = podiums + ?, fastest_laps = fastest_laps + ?, poles = poles + ? WHERE standing_id = ?;",
+      [points, wins, podiums, fastestLaps, poles, String(prior[0].standing_id)],
     );
   } else {
     await database.run(
-      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0);",
-      [raceId + "_drv_" + driverId, season, "T" + tier, driverId, points, wins, podiums, fastestLaps],
+      "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 0);",
+      [raceId + "_drv_" + driverId, season, "T" + tier, driverId, points, wins, podiums, poles, fastestLaps],
     );
   }
 }
@@ -248,6 +248,10 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       );
       await upsertDriverStanding(database, tier, season, String(race.race_id), row.driverId, points,
         row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap);
+    }
+    const poleWinner = weekend.qualifying.classification.find((row) => row.gridPosition === 1);
+    if (poleWinner) {
+      await upsertDriverStanding(database, tier, season, String(race.race_id) + "_pole", poleWinner.driverId, 0, 0, 0, 0, 1);
     }
     const teamPoints = new Map<string, { points: number; wins: number; podiums: number }>();
     for (const row of orderedRace) {
