@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type DryTyreCompound, type TierId } from "../core/GameConfig";
-import { calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound, calculateTeamDriverPayroll } from "../core/EconomyEngine";
+import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
+import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
 import { createManagerJobOffers, resolveBoardObjectivesForSeason } from "../core/BoardObjectiveService";
@@ -313,14 +314,16 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       "SELECT team_id, cash FROM teams WHERE career_id = ? AND division_id = ? AND is_active = 1 ORDER BY team_id;",
       [careerId, "T" + tier],
     );
-    const rounds = TIER_CONFIG[tier].roundsPerSeason;
-    const raceCosts = [
-      { category: "operating-cost", amount: -calculateOperatingCostPerRound(tier) },
-      { category: "driver-payroll", amount: tier === 6 ? 0 : -Math.round(calculateTeamDriverPayroll(tier) / rounds) },
-      { category: "staff-payroll", amount: tier === 6 ? 0 : -Math.round(calculateAverageStaffPayroll(tier) / rounds) },
-    ];
     for (const teamRow of teamRows) {
       let balance = Number(teamRow.cash);
+      const payroll = await calculateTeamRacePayrollCosts(database, {
+        teamId: String(teamRow.team_id), season, tier, round: Number(race.round),
+      });
+      const raceCosts = [
+        { category: "operating-cost", amount: -calculateOperatingCostPerRound(tier) },
+        { category: "driver-payroll", amount: -payroll.driverPayroll },
+        { category: "staff-payroll", amount: -payroll.staffPayroll },
+      ];
       for (const cost of raceCosts) {
         if (cost.amount === 0) continue;
         const next = calculateBalanceAfterTransaction({ currentBalance: balance, amount: cost.amount, tier });
