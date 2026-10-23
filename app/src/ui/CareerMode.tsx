@@ -863,6 +863,8 @@ export default function CareerMode() {
     if (!database || !activeSave) return;
     setRunningRace(true); setRaceError(""); setLastRace(null);
     try {
+      const availableCompounds = TIER_CONFIG[activeSave.tier].allowedDryCompounds;
+      const raceCompound = availableCompounds.includes(selectedTyreCompound) ? selectedTyreCompound : availableCompounds[0]!;
       const result = await simulateNextRace(database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""), raceCompound);
       await persistSnapshot(database, activeSave, "race-completed", field(dashboard?.career, "game_mode") === "sandbox");
       setLastRace(result);
