@@ -160,8 +160,25 @@ export function simulateRace(input: RaceInput): RaceResult {
   for (let lap = 1; lap <= input.totalLaps; lap += 1) {
     const trackCondition = input.weatherByLap?.[lap - 1] ?? input.trackCondition;
     const lapResults = states.map((state): Omit<DriverLapResult, "position" | "gapToLeaderSeconds"> => {
-      const compoundResult = getCompoundPaceResult({ compound: state.input.compound, trackCondition });
-      if (!compoundResult.usable) throw new Error(`Compound ${state.input.compound} tidak dapat dipakai pada kondisi ${trackCondition}.`);
+      const compound = state.input.compoundByLap?.[lap - 1] ?? state.input.compound;
+      const pitStop = state.input.pitStopByLap?.[lap - 1] ?? false;
+      const pitLossSeconds = state.input.pitLossSecondsByLap?.[lap - 1] ?? 0;
+      if (compound !== state.activeCompound && !pitStop) {
+        throw new Error("Driver " + state.input.id + " mengubah compound tanpa pit stop pada lap " + lap + ".");
+      }
+      if (pitStop) state.tyreWearPercent = 0;
+      state.activeCompound = compound;
+      const compoundResult = getCompoundPaceResult({ compound, trackCondition });
+      if (!compoundResult.usable) throw new Error("Compound " + compound + " tidak dapat dipakai pada kondisi " + trackCondition + ".");
+      const wearPerLap = calculateWearPerLap({
+        compound,
+        trackAbrasion: input.trackAbrasion,
+        driverAggression: state.input.aggression,
+        trackTemperatureCelsius: input.trackTemperatureCelsius,
+        mechanicalGrip: state.input.mechanicalGrip,
+        driverTyreManagement: state.input.tyreManagement,
+        tierWearMultiplier: tierConfig.tyreWearMultiplier,
+      });
       const weatherDelta = calculateWeatherDeltaSeconds({
         condition: trackCondition,
         weatherAdaptation: state.input.weatherAdaptation ?? 0,
@@ -178,9 +195,10 @@ export function simulateRace(input: RaceInput): RaceResult {
         + wearPenalty
         + fuelDelta
         + formDelta
+        + pitLossSeconds
         + randomDelta;
       state.cumulativeTimeSeconds += lapTimeSeconds;
-      state.tyreWearPercent = Math.min(100, state.tyreWearPercent + state.wearPerLap);
+      state.tyreWearPercent = Math.min(100, state.tyreWearPercent + wearPerLap);
       return {
         driverId: state.input.id,
         driverName: state.input.name,
@@ -189,6 +207,9 @@ export function simulateRace(input: RaceInput): RaceResult {
         cumulativeTimeSeconds: state.cumulativeTimeSeconds,
         tyreWearPercent: state.tyreWearPercent,
         trackCondition,
+        compound,
+        pitStop,
+        pitLossSeconds,
       };
     });
     lapResults.sort((a, b) => a.cumulativeTimeSeconds - b.cumulativeTimeSeconds || a.driverId.localeCompare(b.driverId));
