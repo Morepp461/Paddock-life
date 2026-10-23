@@ -32,6 +32,20 @@ export class CapacitorSQLiteDatabase implements IDatabase {
     return new CapacitorSQLiteDatabase(connection, databaseName, db);
   }
 
+  /** Deletes a save database only after closing any active native connection. */
+  static async removeDatabase(databaseName: string): Promise<void> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(databaseName)) {
+      throw new Error("Nama database tidak valid.");
+    }
+    const connection = new SQLiteConnection(CapacitorSQLite);
+    await connection.checkConnectionsConsistency();
+    const existing = await connection.isConnection(databaseName, false);
+    if (existing.result) {
+      await connection.closeConnection(databaseName, false);
+    }
+    await CapacitorSQLite.deleteDatabase({ database: databaseName });
+  }
+
   async execute(sql: string): Promise<void> {
     await this.db.execute(sql, false);
   }
