@@ -68,12 +68,14 @@ export async function prepareDivisionPromotionOffer(
   if (!input.careerId.trim() || !Number.isSafeInteger(input.completedSeason) || input.completedSeason < 1) {
     throw new RangeError("Career ID dan completed season harus valid.");
   }
-  const [careerRows, playerRows] = await Promise.all([
+  const [careerRows, playerRows, managerRows] = await Promise.all([
     database.query("SELECT current_season, highest_unlocked_tier, current_division_tier FROM career WHERE career_id = ?;", [input.careerId]),
     database.query("SELECT team_id, name, division_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [input.careerId]),
+    database.query("SELECT team_id, status FROM career_managers WHERE career_id = ? AND is_player = 1 LIMIT 1;", [input.careerId]),
   ]);
-  const career = careerRows[0], player = playerRows[0];
-  if (!career || !player) throw new Error("Career atau tim pemain tidak ditemukan untuk keputusan promosi.");
+  const career = careerRows[0], player = playerRows[0], manager = managerRows[0];
+  if (!career || !player || !manager) throw new Error("Career, tim pemain, atau manager tidak ditemukan untuk keputusan promosi.");
+  if (String(manager.status) !== "active" || String(manager.team_id) !== String(player.team_id)) return null;
   if (numberValue(career, "current_season", 1) !== input.completedSeason) {
     throw new Error("Keputusan promosi harus dibuat sebelum season berpindah.");
   }
