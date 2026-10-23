@@ -5,6 +5,7 @@ import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound, calculateTeamDriverPayroll } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
+import { createManagerJobOffers, resolveBoardObjectivesForSeason } from "../core/BoardObjectiveService";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
@@ -781,6 +782,14 @@ export default function CareerMode() {
         setSeasonProgress("Settling Tier " + tierId + " finances…");
         await settleCareerSeason(database, { careerId: activeSave.careerId, season, tier: tierId });
       }
+      setSeasonProgress("Resolving board objectives and manager outcomes…");
+      const boardResolution = await resolveBoardObjectivesForSeason(database, { careerId: activeSave.careerId, season });
+      await createManagerJobOffers(database, {
+        careerId: activeSave.careerId,
+        completedSeason: season,
+        nextSeason: season + 1,
+        resolution: boardResolution,
+      });
       setSeasonProgress("Running world transition and preparing the next season…");
       const rollover = await rollWorldSeasonForward(database, {
         careerId: activeSave.careerId,
