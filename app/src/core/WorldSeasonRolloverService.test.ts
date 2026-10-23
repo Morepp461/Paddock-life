@@ -66,6 +66,13 @@ describe("world season rollover", () => {
         worldSeed: "world-season-rollover-test", season: 2, entityId: String(row.driver_id),
         kind: "driver", age: 45, tier: 1,
       }));
+      const staffCandidates = await database.query(
+        "SELECT staff_id FROM staff WHERE career_id = ? AND is_retired = 0 ORDER BY staff_id LIMIT 1;",
+        [career.careerId],
+      );
+      expect(staffCandidates).toHaveLength(1);
+      const staffId = String(staffCandidates[0]!.staff_id);
+      await database.run("UPDATE staff SET age = 80 WHERE staff_id = ?;", [staffId]);
 
       const result = await rollWorldSeasonForward(database, { careerId: career.careerId, completedSeason: 1 });
       expect(result.currentSeason).toBe(2);
@@ -87,6 +94,13 @@ describe("world season rollover", () => {
       expect(retirementEvents.map((row) => Number(row.became_staff_candidate))).toEqual(
         expectedRetirements.slice().sort((a, b) => a.entityId.localeCompare(b.entityId)).map((decision) => decision.becomesStaff ? 1 : 0),
       );
+      expect(result.staffRetiredByAge).toBeGreaterThanOrEqual(1);
+      expect(await database.query("SELECT age, is_retired, team_id, is_free_agent FROM staff WHERE staff_id = ?;", [staffId]))
+        .toEqual([{ age: 81, is_retired: 1, team_id: null, is_free_agent: 0 }]);
+      expect(await database.query(
+        "SELECT previous_age, age_after, retirement_probability FROM staff_retirement_events WHERE career_id = ? AND staff_id = ? AND season = 2;",
+        [career.careerId, staffId],
+      )).toEqual([{ previous_age: 80, age_after: 81, retirement_probability: 1 }]);
 
       for (const tier of [1, 2, 3, 4, 5, 6] as const) {
         const band = TIER_CONFIG[tier].driverAge;
