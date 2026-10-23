@@ -509,6 +509,10 @@ export async function rollWorldSeasonForward(
           [decision.ageAfter, decision.reason, decision.entityId, input.careerId],
         );
         await database.run(
+          "UPDATE driver_contracts SET end_season = ? WHERE driver_id = ? AND start_season <= ? AND end_season >= ?;",
+          [input.completedSeason, decision.entityId, nextSeason, nextSeason],
+        );
+        await database.run(
           `INSERT INTO driver_retirement_events
             (career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
