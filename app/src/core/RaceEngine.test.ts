@@ -83,10 +83,7 @@ describe("deterministic race kernel", () => {
     expect(pitLap4.pitLossSeconds).toBe(12.5);
     expect(pitLap4.tyreWearPercent).toBeGreaterThan(0);
     expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeGreaterThan(0);
-    expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeCloseTo(
-      12.5 + (pitLap4.tyreWearPercent - baselineLap4.tyreWearPercent) * 0.01,
-      0,
-    );
+    expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeCloseTo(13.05, 8);
   });
 
   it("rejects compound changes without a pit stop and invalid per-lap schedules", () => {
