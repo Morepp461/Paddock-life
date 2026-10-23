@@ -26,7 +26,8 @@ export interface RaceInput {
   readonly estimatedCircuitLapSeconds: number;
   readonly totalLaps: number;
   readonly trackAbrasion: number;
-  readonly trackTemperatureCelsius: number;
+  /** Omit when circuit temperature is not source-backed; neutral temperature factor is used. */
+  readonly trackTemperatureCelsius?: number;
   readonly trackCondition: TrackCondition;
   /** Optional per-lap conditions supplied by the weather transition system. */
   readonly weatherByLap?: readonly TrackCondition[];
@@ -66,7 +67,9 @@ function validateInput(input: RaceInput): void {
   if (!Number.isFinite(input.trackAbrasion) || input.trackAbrasion < 0 || input.trackAbrasion > 100) {
     throw new RangeError("TrackAbrasion harus berada pada rentang 0–100.");
   }
-  if (!Number.isFinite(input.trackTemperatureCelsius)) throw new RangeError("Suhu lintasan harus valid.");
+  if (input.trackTemperatureCelsius !== undefined && !Number.isFinite(input.trackTemperatureCelsius)) {
+    throw new RangeError("Suhu lintasan harus valid.");
+  }
   if (input.weatherByLap && input.weatherByLap.length !== input.totalLaps) throw new RangeError("WeatherByLap harus memiliki satu kondisi untuk setiap lap.");
   assertScore("ReferenceSetupScore", input.referenceSetupScore);
   if (input.drivers.length < 2) throw new RangeError("Race membutuhkan minimal dua driver.");

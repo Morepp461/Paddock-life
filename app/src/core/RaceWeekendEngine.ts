@@ -23,7 +23,8 @@ export interface RaceWeekendInput {
   readonly estimatedCircuitLapSeconds: number;
   readonly totalLaps: number;
   readonly trackAbrasion: number;
-  readonly trackTemperatureCelsius: number;
+  /** Omit when no source-backed circuit temperature is available. */
+  readonly trackTemperatureCelsius?: number;
   readonly trackCondition: RaceInput["trackCondition"];
   readonly referenceSetupScore: number;
   readonly hasSprint: boolean;

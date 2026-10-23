@@ -268,7 +268,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   const weekend = simulateRaceWeekend({
     worldSeed: seed, season, round: Number(race.round), tier,
     estimatedCircuitLapSeconds: Number(race.estimated_lap_seconds), totalLaps: Number(race.laps),
-    trackAbrasion: Number(race.abrasion), trackTemperatureCelsius: 25,
+    trackAbrasion: Number(race.abrasion),
     trackCondition, referenceSetupScore: 50,
     hasSprint: Number(race.has_sprint) === 1,
     overtakingDifficulty: Number(race.overtaking_difficulty),

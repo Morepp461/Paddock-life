@@ -21,7 +21,8 @@ export interface TyreWearInput {
   readonly compound: TyreCompound;
   readonly trackAbrasion: number;
   readonly driverAggression: number;
-  readonly trackTemperatureCelsius: number;
+  /** Omit when no source-backed circuit temperature is available. */
+  readonly trackTemperatureCelsius?: number;
   readonly mechanicalGrip: number;
   readonly driverTyreManagement: number;
   /** Must come from the validated tier configuration, not an implicit default. */
@@ -78,10 +79,9 @@ export function calculateWearPerLap(input: TyreWearInput): number {
   const aggressionFactor = 0.7 + 0.6 * input.driverAggression / 100;
   const carBalanceFactor = clamp(1.15 - 0.003 * input.mechanicalGrip, 0.85, 1.15);
   const driverManagementFactor = 1.15 - 0.004 * input.driverTyreManagement;
-  const temperatureFactor = calculateTemperatureWearFactor(
-    input.trackTemperatureCelsius,
-    compound.idealTemperatureCelsius,
-  );
+  const temperatureFactor = input.trackTemperatureCelsius === undefined
+    ? 1
+    : calculateTemperatureWearFactor(input.trackTemperatureCelsius, compound.idealTemperatureCelsius);
 
   return compound.baseWearPerLap
     * (input.trackAbrasion / 50)

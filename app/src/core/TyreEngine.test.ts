@@ -22,6 +22,11 @@ describe("tyre wear model", () => {
     expect(calculateWearPerLap(baseline)).toBeCloseTo(2.4 * 1 * 1 * 1 * 1 * 0.95);
   });
 
+  it("uses a neutral temperature factor when no source-backed track temperature exists", () => {
+    const { trackTemperatureCelsius: _temperature, ...withoutTemperature } = baseline;
+    expect(calculateWearPerLap(withoutTemperature)).toBeCloseTo(calculateWearPerLap(baseline));
+  });
+
   it("increases wear when temperature is outside the ideal window and caps at 1.6", () => {
     expect(calculateTemperatureWearFactor(95, { min: 85, max: 105 })).toBe(1);
     expect(calculateTemperatureWearFactor(115, { min: 85, max: 105 })).toBeCloseTo(1.2);
