@@ -102,6 +102,13 @@ describe("deterministic race kernel", () => {
         raceInput.drivers[1]!,
       ],
     })).toThrow("satu nilai untuk setiap lap");
+    expect(() => simulateRace({
+      ...raceInput,
+      drivers: [
+        { ...driverA, pitLossSecondsByLap: [0, 1, 0, 0, 0, 0, 0, 0] },
+        raceInput.drivers[1]!,
+      ],
+    })).toThrow("hanya boleh dicatat pada lap");
   });
 
   it("rejects invalid lap counts, duplicate IDs, unavailable compounds, and unusable wet-weather tyres", () => {
