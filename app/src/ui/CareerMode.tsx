@@ -922,7 +922,6 @@ export default function CareerMode() {
 
   if (dashboard && activeSave) {
     const team = dashboard.team;
-    const raceDriverNames = new Map((lastRace?.qualifying.classification ?? []).map((row) => [row.driverId, row.driverName]));
     const raceStartingGridPosition = new Map((lastRace?.raceStartingGrid ?? []).map((driverId, index) => [driverId, index + 1]));
     const sprintStartingGridPosition = new Map((lastRace?.sprintStartingGrid ?? []).map((driverId, index) => [driverId, index + 1]));
     const nextRace = dashboard.races.find((race) => field(race, "status") === "scheduled");
