@@ -778,7 +778,7 @@ export default function CareerMode() {
         const pending = numberField(pendingRows[0], "count");
         for (let raceIndex = 0; raceIndex < pending; raceIndex += 1) {
           setSeasonProgress("Simulating Tier " + tierId + " · race " + (raceIndex + 1) + "/" + pending);
-          await simulateNextRace(database, activeSave.careerId, tierId, worldSeed);
+          await simulateNextRace(database, activeSave.careerId, tierId, worldSeed, TIER_CONFIG[tierId].allowedDryCompounds[0]!);
         }
       }
       for (const tierId of tiers) {
