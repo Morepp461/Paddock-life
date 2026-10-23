@@ -13,6 +13,7 @@ import {
   calculateFacilityUpgradeCost,
   calculateMinimumRAndDBudget,
   calculateOperatingCostPerRound,
+  calculateProratedRoundCost,
   calculateOverdraftLimit,
   calculatePrizeMoney,
   calculateRevenueTarget,
@@ -21,6 +22,13 @@ import {
 } from "./EconomyEngine";
 
 describe("documented economy formulas", () => {
+  it("distributes annual payroll exactly across race rounds", () => {
+    expect(Array.from({ length: 24 }, (_, index) => calculateProratedRoundCost(62_000_003, index + 1, 24)).reduce((sum, amount) => sum + amount, 0)).toBe(62_000_003);
+    expect(calculateProratedRoundCost(1_000, 1, 3)).toBe(334);
+    expect(calculateProratedRoundCost(1_000, 2, 3)).toBe(333);
+    expect(calculateProratedRoundCost(1_000, 3, 3)).toBe(333);
+    expect(() => calculateProratedRoundCost(1_000, 4, 3)).toThrow("Round harus");
+  });
   it("matches required budget cost fractions across tiers", () => {
     expect(calculateOperatingCostPerRound(5)).toBe(150_000);
     expect(calculateOperatingCostPerRound(1)).toBe(Math.round(248_000_000 * 0.25 / 24));
