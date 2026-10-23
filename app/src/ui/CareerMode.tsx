@@ -68,11 +68,11 @@ function readSaveSlots(): SaveSlot[] {
 function writeSaveSlots(slots: SaveSlot[]): void {
   try { localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(slots)); } catch { /* SQLite remains authoritative; index is only for finding saves. */ }
 }
-function field(row: Row | undefined, key: string, fallback = ""): string {
+function field(row: Row | null | undefined, key: string, fallback = ""): string {
   const value = row?.[key];
   return value === null || value === undefined ? fallback : String(value);
 }
-function numberField(row: Row | undefined, key: string, fallback = 0): number {
+function numberField(row: Row | null | undefined, key: string, fallback = 0): number {
   const value = Number(row?.[key]);
   return Number.isFinite(value) ? value : fallback;
 }
