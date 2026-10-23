@@ -37,7 +37,7 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number; worldTransitionPending: boolean;
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; boardObjectives: Row[]; manager: Row | null; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number; worldTransitionPending: boolean;
 };
 type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
@@ -105,7 +105,7 @@ async function loadCatalog(): Promise<Catalog> {
 async function loadDashboard(database: IDatabase, careerId: string, playerTeamId: string, tier: TierId): Promise<DashboardData> {
   const careerRows = await database.query("SELECT * FROM career WHERE career_id = ?;", [careerId]);
   const currentSeason = numberField(careerRows[0], "current_season", 1);
-  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, cars, developmentProjects, developmentHistory, worldPendingRows, worldSettlementPendingRows, worldTransitionPendingRows] = await Promise.all([
+  const [teamRows, teams, roster, races, sponsors, staff, finance, standings, settlements, boardObjectives, managerRows, cars, developmentProjects, developmentHistory, worldPendingRows, worldSettlementPendingRows, worldTransitionPendingRows] = await Promise.all([
     database.query("SELECT * FROM teams WHERE team_id = ? AND career_id = ?;", [playerTeamId, careerId]),
     database.query("SELECT team_id, name, division_id, strength_grade, finance_grade, performance_grade, reputation, cash, budget, is_player_team FROM teams WHERE career_id = ? AND division_id = ? ORDER BY reputation DESC;", [careerId, "T" + tier]),
     database.query("SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.fan_popularity, d.potential, dc.salary, dc.end_season FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ? JOIN teams t ON t.team_id = dc.team_id WHERE t.career_id = ? AND t.team_id = ? AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ? ORDER BY d.pace DESC;", [currentSeason, currentSeason, careerId, playerTeamId, TIER_CONFIG[tier].driverAge.min, TIER_CONFIG[tier].driverAge.max]),
@@ -115,6 +115,8 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     database.query("SELECT type, category, amount, balance_after, season, race, occurred_at FROM finances WHERE team_id = ? ORDER BY occurred_at DESC LIMIT 30;", [playerTeamId]),
     database.query("SELECT st.points, st.wins, st.podiums, d.name AS driver_name, t.name AS team_name, st.driver_id, st.team_id FROM standings st LEFT JOIN drivers d ON d.driver_id = st.driver_id LEFT JOIN teams t ON t.team_id = st.team_id WHERE st.season = ? AND st.division_id = ? ORDER BY st.points DESC, st.wins DESC;", [currentSeason, "T" + tier]),
     database.query("SELECT settlement_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash FROM season_settlements WHERE career_id = ? AND team_id = ? AND season = ?;", [careerId, playerTeamId, currentSeason]),
+    database.query("SELECT objective_type, target_value, expected_rank, result, manager_fired FROM board_objectives WHERE team_id = ? AND season = ? ORDER BY objective_type;", [playerTeamId, currentSeason]),
+    database.query("SELECT manager_id, name, confidence, reputation, consecutive_primary_misses, status FROM career_managers WHERE career_id = ? AND is_player = 1 LIMIT 1;", [careerId]),
     database.query("SELECT * FROM cars WHERE team_id = ? AND season = ? LIMIT 1;", [playerTeamId, currentSeason]),
     database.query("SELECT * FROM development_projects WHERE career_id = ? AND team_id = ? ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, start_round DESC;", [careerId, playerTeamId]),
     database.query("SELECT * FROM development_history WHERE career_id = ? AND team_id = ? ORDER BY season DESC, round DESC LIMIT 30;", [careerId, playerTeamId]),
@@ -137,7 +139,7 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     ),
   ]);
   if (!careerRows[0] || !teamRows[0]) throw new Error("Save tidak memiliki data career atau tim pemain.");
-  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, car: cars[0] ?? null, developmentProjects, developmentHistory, pendingWorldRaces: numberField(worldPendingRows[0], "count"), unsettledWorldDivisions: numberField(worldSettlementPendingRows[0], "count"), worldTransitionPending: numberField(worldTransitionPendingRows[0], "count") === 1 };
+  return { career: careerRows[0], team: teamRows[0], teams, roster, races, sponsors, staff, finance, standings, settlements, boardObjectives, manager: managerRows[0] ?? null, car: cars[0] ?? null, developmentProjects, developmentHistory, pendingWorldRaces: numberField(worldPendingRows[0], "count"), unsettledWorldDivisions: numberField(worldSettlementPendingRows[0], "count"), worldTransitionPending: numberField(worldTransitionPendingRows[0], "count") === 1 };
 }
 
 async function openCareerSlot(slot: SaveSlot): Promise<{ database: IDatabase; dashboard: DashboardData }> {
