@@ -195,7 +195,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     compound, weatherAdaptation: numberField(driver, "wet_skill"),
   }));
   const weekend = simulateRaceWeekend({
-    worldSeed: seed, season: 1, round: Number(race.round), tier,
+    worldSeed: seed, season, round: Number(race.round), tier,
     estimatedCircuitLapSeconds: Number(race.estimated_lap_seconds), totalLaps: Number(race.laps),
     trackAbrasion: Number(race.abrasion), trackTemperatureCelsius: 25,
     trackCondition: "dry", referenceSetupScore: 50,
