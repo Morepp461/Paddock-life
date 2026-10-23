@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type DryTyreCompound, type TierId } from "../core/GameConfig";
-import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound, calculateProratedRoundCost } from "../core/EconomyEngine";
+import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
+import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
 import { createManagerJobOffers, resolveBoardObjectivesForSeason } from "../core/BoardObjectiveService";
@@ -313,34 +314,15 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       "SELECT team_id, cash FROM teams WHERE career_id = ? AND division_id = ? AND is_active = 1 ORDER BY team_id;",
       [careerId, "T" + tier],
     );
-    const rounds = TIER_CONFIG[tier].roundsPerSeason;
     for (const teamRow of teamRows) {
       let balance = Number(teamRow.cash);
-      let annualDriverPayroll = 0;
-      let annualStaffPayroll = 0;
-      if (tier !== 6) {
-        const [driverPayrollRows, staffPayrollRows] = await Promise.all([
-          database.query(
-            `SELECT COALESCE(SUM(dc.salary), 0) AS total
-             FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id
-             WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ?
-               AND d.is_retired = 0 AND d.is_academy_driver = 0;`,
-            [String(teamRow.team_id), season, season],
-          ),
-          database.query(
-            `SELECT COALESCE(SUM(salary), 0) AS total
-             FROM staff
-             WHERE team_id = ? AND is_free_agent = 0 AND (contract_end IS NULL OR contract_end >= ?);`,
-            [String(teamRow.team_id), season],
-          ),
-        ]);
-        annualDriverPayroll = Number(driverPayrollRows[0]?.total ?? 0);
-        annualStaffPayroll = Number(staffPayrollRows[0]?.total ?? 0);
-      }
+      const payroll = await calculateTeamRacePayrollCosts(database, {
+        teamId: String(teamRow.team_id), season, tier, round: Number(race.round),
+      });
       const raceCosts = [
         { category: "operating-cost", amount: -calculateOperatingCostPerRound(tier) },
-        { category: "driver-payroll", amount: -calculateProratedRoundCost(annualDriverPayroll, Number(race.round), rounds) },
-        { category: "staff-payroll", amount: -calculateProratedRoundCost(annualStaffPayroll, Number(race.round), rounds) },
+        { category: "driver-payroll", amount: -payroll.driverPayroll },
+        { category: "staff-payroll", amount: -payroll.staffPayroll },
       ];
       for (const cost of raceCosts) {
         if (cost.amount === 0) continue;
