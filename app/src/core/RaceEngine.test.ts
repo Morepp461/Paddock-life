@@ -60,6 +60,53 @@ describe("deterministic race kernel", () => {
     expect(result.classification[1].gapToLeaderSeconds).toBeGreaterThanOrEqual(0);
   });
 
+  it("applies a configured pit stop, changes compound, resets tyre wear, and adds the supplied pit loss", () => {
+    const driverA = raceInput.drivers[0]!;
+    const strategy = {
+      ...driverA,
+      compoundByLap: ["medium", "medium", "medium", "hard", "hard", "hard", "hard", "hard"] as const,
+      pitStopByLap: [false, false, false, true, false, false, false, false],
+      pitLossSecondsByLap: [0, 0, 0, 12.5, 0, 0, 0, 0],
+    };
+    const baseline = simulateRace({
+      ...raceInput,
+      drivers: [driverA, raceInput.drivers[1]!],
+    });
+    const withStop = simulateRace({
+      ...raceInput,
+      drivers: [strategy, raceInput.drivers[1]!],
+    });
+    const baselineLap4 = baseline.laps[3]!.find((row) => row.driverId === driverA.id)!;
+    const pitLap4 = withStop.laps[3]!.find((row) => row.driverId === driverA.id)!;
+    expect(pitLap4.pitStop).toBe(true);
+    expect(pitLap4.compound).toBe("hard");
+    expect(pitLap4.pitLossSeconds).toBe(12.5);
+    expect(pitLap4.tyreWearPercent).toBeGreaterThan(0);
+    expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeGreaterThan(0);
+    expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeCloseTo(
+      12.5 + (pitLap4.tyreWearPercent - baselineLap4.tyreWearPercent) * 0.01,
+      0,
+    );
+  });
+
+  it("rejects compound changes without a pit stop and invalid per-lap schedules", () => {
+    const driverA = raceInput.drivers[0]!;
+    expect(() => simulateRace({
+      ...raceInput,
+      drivers: [
+        { ...driverA, compoundByLap: ["medium", "medium", "medium", "hard", "hard", "hard", "hard", "hard"] },
+        raceInput.drivers[1]!,
+      ],
+    })).toThrow("tanpa pit stop");
+    expect(() => simulateRace({
+      ...raceInput,
+      drivers: [
+        { ...driverA, pitLossSecondsByLap: [0, 0] },
+        raceInput.drivers[1]!,
+      ],
+    })).toThrow("satu nilai untuk setiap lap");
+  });
+
   it("rejects invalid lap counts, duplicate IDs, unavailable compounds, and unusable wet-weather tyres", () => {
     expect(() => simulateRace({ ...raceInput, totalLaps: 7 })).toThrow(RangeError);
     expect(() => simulateRace({
