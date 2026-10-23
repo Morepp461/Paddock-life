@@ -185,17 +185,16 @@ export async function resolveDivisionPromotionChoice(
     throw new Error("Divisi target belum terbuka untuk save ini.");
   }
   const bottomRows = await database.query(
-    `SELECT t.team_id, t.affordability FROM teams t
-     LEFT JOIN standings s ON s.team_id = t.team_id AND s.season = ? AND s.division_id = ? AND s.driver_id IS NULL
-     WHERE t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND t.is_player_team = 0
-     ORDER BY COALESCE(s.points, 0) ASC, COALESCE(s.wins, 0) ASC, t.team_id DESC LIMIT 1;`,
-    [numberValue(offer, "season"), "T" + targetTier, input.careerId, "T" + targetTier],
+    "SELECT team_id, division_id, affordability FROM teams WHERE career_id = ? AND team_id = ? AND is_active = 1 AND is_player_team = 0;",
+    [input.careerId, String(offer.target_team_id)],
   );
   const bottom = bottomRows[0];
-  if (!bottom) throw new Error("Tim terbawah di divisi target tidak ditemukan.");
+  if (!bottom || tierValue(bottom.division_id) !== targetTier) {
+    throw new Error("Tim penukar tidak lagi menempati divisi target; keputusan promosi dihentikan agar jumlah tim tidak rusak.");
+  }
   await database.transaction(async () => {
     const currentTeamRows = await database.query(
-      "SELECT division_id FROM teams WHERE career_id = ? AND team_id = ? AND is_player_team = 1 AND is_active = 1;",
+      "SELECT division_id, affordability FROM teams WHERE career_id = ? AND team_id = ? AND is_player_team = 1 AND is_active = 1;",
       [input.careerId, teamId],
     );
     if (!currentTeamRows[0] || tierValue(currentTeamRows[0].division_id) !== currentTier) {
@@ -207,7 +206,7 @@ export async function resolveDivisionPromotionChoice(
     await database.run(
       "INSERT INTO team_division_history (history_id, career_id, team_id, season, from_tier, to_tier, reason, affordability) VALUES (?, ?, ?, ?, ?, ?, 'player_move', ?);",
       [stableId(input.careerId, teamId, numberValue(offer, "season")) + "_player", input.careerId, teamId,
-        numberValue(offer, "season") + 1, currentTier, targetTier, numberValue(bottom, "affordability", 1)],
+        numberValue(offer, "season") + 1, currentTier, targetTier, numberValue(currentTeamRows[0], "affordability", 1)],
     );
     await database.run(
       "INSERT INTO team_division_history (history_id, career_id, team_id, season, from_tier, to_tier, reason, affordability) VALUES (?, ?, ?, ?, ?, ?, 'player_move', ?);",
