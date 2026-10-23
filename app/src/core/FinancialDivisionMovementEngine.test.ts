@@ -72,6 +72,13 @@ describe("financial division movement", () => {
     expect(byId(result, "T3-01").tier).toBe(4);
   });
 
+  it("refuses to break movement cooldown when no lower-tier promotion candidate is eligible", () => {
+    const teams = world().map((team) => team.tier === 2 ? { ...team, movementCooldown: 2 } : team);
+    const index = teams.findIndex((team) => team.teamId === "T1-01");
+    teams[index] = { ...teams[index]!, cash: -100_000_000 };
+    expect(() => resolveFinancialDivisionMovement(teams)).toThrow("without violating movement cooldown");
+  });
+
   it("folds a Tier 6 AI team after two consecutive severe-distress seasons and reports the replacement slot", () => {
     const teams = world();
     const index = teams.findIndex((team) => team.teamId === "T6-01");
