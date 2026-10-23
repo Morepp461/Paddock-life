@@ -9,6 +9,7 @@ import { resolveOvertaking, type DefensiveMode } from "./OvertakingEngine";
 export interface RaceWeekendDriver extends RaceDriverInput {
   readonly qualifyingScore: number;
   readonly starts?: number;
+  readonly racecraft?: number;
   readonly overtakingSkill?: number;
   readonly defendingSkill?: number;
   readonly defensiveMode?: DefensiveMode;
@@ -112,19 +113,17 @@ export function calculateStartingGrid(input: {
 function applyGridAndOvertaking(
   result: RaceResult,
   input: RaceWeekendInput,
-  session: "sprint" | "race",
   startingOrder: readonly string[],
   sessionSeed: string | number,
 ): RaceResult {
   const driverById = new Map(input.drivers.map((driver) => [driver.id, driver]));
-  const laps = result.laps.map((rawLap, lapIndex) => {
+  const laps: (typeof result.laps[number])[] = [];
+  for (let lapIndex = 0; lapIndex < result.laps.length; lapIndex += 1) {
+    const rawLap = result.laps[lapIndex]!;
     const rowById = new Map(rawLap.map((row) => [row.driverId, row]));
-    const order = startingOrder.slice();
-    // The order entering a lap comes from the previous lap's classification.
-    if (lapIndex > 0) {
-      const previous = laps[lapIndex - 1]!;
-      order.splice(0, order.length, ...previous.map((row) => row.driverId));
-    }
+    const order = lapIndex === 0
+      ? startingOrder.slice()
+      : laps[lapIndex - 1]!.map((row) => row.driverId);
     if (input.overtakingDifficulty !== undefined) {
       for (let index = 1; index < order.length; index += 1) {
         let attackerPosition = index;
@@ -164,15 +163,15 @@ function applyGridAndOvertaking(
       }
     }
     const leader = rowById.get(order[0]!)!;
-    return order.map((driverId, positionIndex) => {
+    laps.push(order.map((driverId, positionIndex) => {
       const row = rowById.get(driverId)!;
       return {
         ...row,
         position: positionIndex + 1,
         gapToLeaderSeconds: Math.max(0, row.cumulativeTimeSeconds - leader.cumulativeTimeSeconds),
       };
-    });
-  });
+    }));
+  }
   return { ...result, laps, classification: laps[laps.length - 1]! };
 }
 
@@ -244,12 +243,12 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
     totalLaps: sprintLaps,
     weatherByLap: createWeatherSchedule(input, sprintSeed, sprintLaps),
   });
-  const sprint = rawSprint === null ? null : applyGridAndOvertaking(rawSprint, input, "sprint", sprintGrid, sprintSeed);
+  const sprint = rawSprint === null ? null : applyGridAndOvertaking(rawSprint, input, sprintGrid, sprintSeed);
   const rawRace = simulateRace({
     ...raceInput,
     weatherByLap: createWeatherSchedule(input, input.worldSeed, input.totalLaps),
   });
-  const race = applyGridAndOvertaking(rawRace, input, "race", raceGrid, input.worldSeed);
+  const race = applyGridAndOvertaking(rawRace, input, raceGrid, input.worldSeed);
   const raceLapRows = race.laps.flat();
   const fastestLapSeconds = Math.min(...raceLapRows.map((lap) => lap.lapTimeSeconds));
   const fastestLapDriverIds = [...new Set(raceLapRows.filter((lap) => lap.lapTimeSeconds === fastestLapSeconds).map((lap) => lap.driverId))].sort();
