@@ -84,6 +84,12 @@ describe("race weekend orchestration", () => {
     expect(first.sprint?.totalLaps).toBe(8);
     expect(first.race.totalLaps).toBe(12);
     expect(first.race.classification.map((row) => row.driverId)).toEqual(second.race.classification.map((row) => row.driverId));
+    expect(first.raceStartingGrid).toEqual(second.raceStartingGrid);
+    expect(first.sprintStartingGrid).toEqual(second.sprintStartingGrid);
+    expect(first.raceStartingGrid).toHaveLength(24);
+    expect(first.sprintStartingGrid).toHaveLength(24);
+    expect(new Set(first.raceStartingGrid).size).toBe(24);
+    expect(new Set(first.sprintStartingGrid).size).toBe(24);
     const nextSeason = simulateRaceWeekend({ ...input, season: 2 });
     expect(nextSeason.race.laps[0]?.[0]?.lapTimeSeconds).not.toBe(first.race.laps[0]?.[0]?.lapTimeSeconds);
   });
@@ -166,6 +172,8 @@ describe("race weekend orchestration", () => {
     });
     expect(result.sprint).toBeNull();
     expect(result.sprintLaps).toBeNull();
+    expect(result.sprintStartingGrid).toBeNull();
+    expect(result.raceStartingGrid).toHaveLength(24);
   });
 });
 
