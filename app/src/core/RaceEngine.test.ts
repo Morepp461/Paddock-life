@@ -109,6 +109,14 @@ describe("deterministic race kernel", () => {
         raceInput.drivers[1]!,
       ],
     })).toThrow("hanya boleh dicatat pada lap");
+    expect(() => simulateRace({
+      ...raceInput,
+      tier: 5,
+      drivers: [
+        { ...driverA, compound: "hard", compoundByLap: ["hard", "hard", "hard", "soft", "soft", "soft", "soft", "soft"], pitStopByLap: [false, false, false, true, false, false, false, false] },
+        { ...raceInput.drivers[1]!, compound: "hard" },
+      ],
+    })).toThrow("tidak tersedia untuk Tier 5");
   });
 
   it("rejects invalid lap counts, duplicate IDs, unavailable compounds, and unusable wet-weather tyres", () => {
