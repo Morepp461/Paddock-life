@@ -57,7 +57,7 @@ describe("source-traceable game config store", () => {
     await expect(requireGameConfigNumber(database, "pit.lane_speed_mps", {}, {
       maximum: 20,
     })).rejects.toThrow(RangeError);
-    await expect(requireGameConfigNumber(database, "simulation.test-global")).rejects.toThrow("Konfigurasi simulasi wajib belum tersedia");
+    await expect(requireGameConfigNumber(database, "simulation.test-global")).rejects.toThrow("Game config harus berupa angka finite");
   });
 
   it("rejects invalid lookup scopes", async () => {
