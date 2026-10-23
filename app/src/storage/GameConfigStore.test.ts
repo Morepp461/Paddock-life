@@ -2,7 +2,7 @@ import initSqlJs from "sql.js";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { SqlJsDatabase } from "./SqlJsDatabase";
 import { runMigrations } from "./Migrations";
-import { getGameConfig, requireGameConfig } from "./GameConfigStore";
+import { getGameConfig, requireGameConfig, requireGameConfigNumber } from "./GameConfigStore";
 import type { IDatabase } from "./IDatabase";
 
 describe("source-traceable game config store", () => {
@@ -48,6 +48,16 @@ describe("source-traceable game config store", () => {
     await expect(getGameConfig(database, "simulation.test-global", {
       scope: "tier", scopeId: "1", allowGlobalFallback: true,
     })).resolves.toMatchObject({ scope: "global", scopeId: "global", value: { enabled: true } });
+  });
+
+  it("loads documented numeric constants with explicit range validation", async () => {
+    await expect(requireGameConfigNumber(database, "pit.lane_speed_mps", {}, {
+      minimum: 0.01,
+    })).resolves.toMatchObject({ value: 22.2, sourceDocument: "02_Simulation_Rules_Addendum_v1.docx" });
+    await expect(requireGameConfigNumber(database, "pit.lane_speed_mps", {}, {
+      maximum: 20,
+    })).rejects.toThrow(RangeError);
+    await expect(requireGameConfigNumber(database, "simulation.test-global")).rejects.toThrow("Konfigurasi simulasi wajib belum tersedia");
   });
 
   it("rejects invalid lookup scopes", async () => {

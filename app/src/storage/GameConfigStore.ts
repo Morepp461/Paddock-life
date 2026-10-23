@@ -82,3 +82,27 @@ export function parseConfigRow<T>(row: Record<string, unknown>): GameConfigEntry
   }
   return { key, scope, scopeId, value: value as T, sourceDocument };
 }
+
+export interface NumericConfigConstraints {
+  readonly minimum?: number;
+  readonly maximum?: number;
+}
+
+export async function requireGameConfigNumber(
+  database: IDatabase,
+  key: string,
+  lookup: GameConfigLookup = {},
+  constraints: NumericConfigConstraints = {},
+): Promise<GameConfigEntry<number>> {
+  const entry = await requireGameConfig<number>(database, key, lookup);
+  if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
+    throw new Error(`Game config harus berupa angka finite: ${key}.`);
+  }
+  if (constraints.minimum !== undefined && entry.value < constraints.minimum) {
+    throw new RangeError(`Game config ${key} berada di bawah batas minimum ${constraints.minimum}.`);
+  }
+  if (constraints.maximum !== undefined && entry.value > constraints.maximum) {
+    throw new RangeError(`Game config ${key} berada di atas batas maksimum ${constraints.maximum}.`);
+  }
+  return entry;
+}
