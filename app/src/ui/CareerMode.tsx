@@ -12,7 +12,7 @@ import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
 import { createManagerJobOffers, resolveBoardObjectivesForSeason } from "../core/BoardObjectiveService";
 import { checkBoardObjectiveMidseason } from "../core/BoardObjectiveWarningService";
-import { getPendingDivisionPromotionOffer, prepareDivisionPromotionOffer, resolveDivisionPromotionChoice } from "../core/DivisionPromotionService";
+import { prepareDivisionPromotionOffer, resolveDivisionPromotionChoice } from "../core/DivisionPromotionService";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
