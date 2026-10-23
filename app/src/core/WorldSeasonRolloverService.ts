@@ -4,7 +4,7 @@ import { generateSeasonCalendar, type CalendarCircuit } from "./SeasonCalendar";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "./ContractNegotiationEngine";
 import { offerDriverContract } from "./CareerContractService";
 import { hashSeed } from "./RandomDistributions";
-import { generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
+import { generateSeasonFreeAgentDriver, generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
 
 type Tier = 1 | 2 | 3 | 4 | 5 | 6;
@@ -313,6 +313,56 @@ async function prepareAiRoster(
           throw error;
         }
         if (seatCount >= 2) break;
+      }
+
+      // If the existing market cannot fill the grid, create source-distributed rookies
+      // and negotiate with them using the same contract rules as other free agents.
+      if (seatCount < 2 && n(team, "cash") >= 0) {
+        for (let attempt = 0; attempt < 20 && seatCount < 2; attempt += 1) {
+          const driverId = await generateSeasonFreeAgentDriver(database, {
+            careerId: input.careerId,
+            tier: tier as Exclude<TierId, 6>,
+            season: input.nextSeason,
+            slot: teamId + "-seat-" + seatCount + "-attempt-" + attempt,
+          });
+          const candidateRows = await database.query(
+            "SELECT market_value, ambition, age FROM drivers WHERE driver_id = ? AND career_id = ? AND is_retired = 0;",
+            [driverId, input.careerId],
+          );
+          const candidate = candidateRows[0];
+          if (!candidate) throw new Error("Rookie free-agent generation tidak mengembalikan driver.");
+          const askingSalary = calculateDriverAskingSalary({
+            marketValue: n(candidate, "market_value"),
+            ambition: n(candidate, "ambition", 50),
+            demandFactor: generateDriverDemandFactor({ worldSeed: input.worldSeed, season: input.nextSeason, driverId }),
+          });
+          if (askingSalary <= 0) continue;
+          const ageAtStart = n(candidate, "age") + 1;
+          const durationSeasons = ageAtStart >= 35 ? 3 : 2;
+          const offerInput = {
+            careerId: input.careerId, teamId, driverId,
+            startSeason: input.nextSeason, durationSeasons,
+            offeredSalary: Math.max(1, Math.ceil(askingSalary * 1.2)),
+            championshipBonus: Math.ceil(askingSalary),
+            role: (seatCount === 0 ? "lead" : "second") as "lead" | "second",
+          };
+          try {
+            const result = await offerDriverContract(database, offerInput);
+            if (result.decision === "accepted") seatCount += 1;
+            else if (result.decision === "counter-offer" && result.counterOffer) {
+              const counter = await offerDriverContract(database, {
+                ...offerInput,
+                offeredSalary: result.counterOffer.salary,
+                durationSeasons: result.counterOffer.durationSeasons,
+              });
+              if (counter.decision === "accepted") seatCount += 1;
+            }
+          } catch (error) {
+            if (error instanceof Error && error.message.includes("saldo kas negatif")) break;
+            if (error instanceof Error && error.message.includes("negosiasi ulang")) continue;
+            throw error;
+          }
+        }
       }
     }
 
