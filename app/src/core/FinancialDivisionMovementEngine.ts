@@ -8,7 +8,7 @@ export interface FinancialMovementTeam {
   readonly isActive: boolean;
   readonly cash: number;
   readonly debt: number;
-  readonly projectedIncome: number;
+  readonly projectedIncomeByTier: Readonly<Record<TierId, number>>;
   readonly reputation: number;
   readonly distressSeasons: number;
   readonly severeDistressSeasons: number;
@@ -49,7 +49,7 @@ function requiredBudget(tier: TierId): number {
 }
 
 function affordability(team: FinancialMovementTeam, targetTier: TierId): number {
-  return (team.cash + team.projectedIncome - team.debt * DEBT_WEIGHT) / requiredBudget(targetTier);
+  return (team.cash + team.projectedIncomeByTier[targetTier] - team.debt * DEBT_WEIGHT) / requiredBudget(targetTier);
 }
 
 function reputationThreshold(tier: TierId): number {
@@ -72,7 +72,10 @@ export function resolveFinancialDivisionMovement(
     ids.add(team.teamId);
     counts.set(team.tier, (counts.get(team.tier) ?? 0) + 1);
     for (const [label, value] of [
-      ["cash", team.cash], ["debt", team.debt], ["projectedIncome", team.projectedIncome],
+      ["cash", team.cash], ["debt", team.debt],
+      ["projectedIncome:T1", team.projectedIncomeByTier[1]], ["projectedIncome:T2", team.projectedIncomeByTier[2]],
+      ["projectedIncome:T3", team.projectedIncomeByTier[3]], ["projectedIncome:T4", team.projectedIncomeByTier[4]],
+      ["projectedIncome:T5", team.projectedIncomeByTier[5]], ["projectedIncome:T6", team.projectedIncomeByTier[6]],
       ["reputation", team.reputation], ["distressSeasons", team.distressSeasons],
       ["severeDistressSeasons", team.severeDistressSeasons], ["movementCooldown", team.movementCooldown],
     ] as const) {
