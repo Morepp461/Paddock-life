@@ -557,6 +557,29 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_manager_job_offers_pending ON manager_job_offers(career_id, manager_id, status, offered_season);
     `,
   },
+  {
+    version: 13,
+    description: "record idempotent mid-season board objective warnings",
+    sql: `
+      CREATE TABLE board_objective_warnings (
+        warning_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        checkpoint_percent INTEGER NOT NULL CHECK (checkpoint_percent IN (50, 80)),
+        completed_rounds INTEGER NOT NULL CHECK (completed_rounds >= 1),
+        total_rounds INTEGER NOT NULL CHECK (total_rounds >= completed_rounds),
+        target_rank INTEGER NOT NULL CHECK (target_rank BETWEEN 1 AND 12),
+        forecast_rank INTEGER NOT NULL CHECK (forecast_rank BETWEEN 1 AND 12),
+        at_risk INTEGER NOT NULL CHECK (at_risk IN (0, 1)),
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (career_id, team_id, season, checkpoint_percent)
+      );
+      CREATE INDEX idx_board_warnings_dashboard
+        ON board_objective_warnings(career_id, team_id, season, at_risk);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
