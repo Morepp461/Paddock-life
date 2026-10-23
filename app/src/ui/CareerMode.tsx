@@ -496,9 +496,10 @@ export default function CareerMode() {
         const playerTeam = (await db.query("SELECT team_id, name FROM teams WHERE career_id = ? AND is_player_team = 1;", [result.careerId]))[0];
         if (!playerTeam) throw new Error("Tim pemain tidak ditemukan setelah world generation.");
         const slot: SaveSlot = { dbName, careerId: result.careerId, managerName, teamName: String(playerTeam.name), tier: result.selectedTier, savedAt: new Date().toISOString() };
-        await persistSnapshot(db, slot, "manual", false);
         const nextSlots = [slot, ...readSaveSlots().filter((item) => item.dbName !== dbName)].slice(0, 2);
-        writeSaveSlots(nextSlots); setSaveSlots(nextSlots); setActiveSave(slot); setGeneration(result);
+        writeSaveSlots(nextSlots); setSaveSlots(nextSlots);
+        await persistSnapshot(db, slot, "manual", false);
+        setActiveSave(slot); setGeneration(result);
         setDatabase(db); setDashboard(await loadDashboard(db, result.careerId, result.playerTeamId, result.selectedTier)); setTab("overview");
       } catch (caught) {
         await db.close();
