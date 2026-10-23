@@ -54,6 +54,6 @@ describe("car component service age", () => {
   it("rejects invalid career, tier, and season inputs", async () => {
     await expect(incrementComponentServiceAgeForRace(database, { careerId: " ", tier: 1, season: 1 })).rejects.toThrow("Career ID");
     await expect(incrementComponentServiceAgeForRace(database, { careerId: "career-service-age", tier: 1, season: 0 })).rejects.toThrow(RangeError);
-    await expect(incrementComponentServiceAgeForRace(database, { careerId: "career-service-age", tier: 7 as 1, season: 1 })).rejects.toThrow(RangeError);
+    await expect(incrementComponentServiceAgeForRace(database, { careerId: "career-service-age", tier: 7 as never, season: 1 })).rejects.toThrow(RangeError);
   });
 });
