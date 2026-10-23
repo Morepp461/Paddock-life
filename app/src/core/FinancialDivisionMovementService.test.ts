@@ -78,6 +78,9 @@ describe("financial division movement persistence", () => {
       const career = await makeCareer(database, "movement-service-guard-test");
       await expect(applyFinancialDivisionMovement(database, { careerId: career.careerId, completedSeason: 1 }))
         .rejects.toThrow("finish every race first");
+      await database.run("UPDATE races SET status = 'completed';");
+      await expect(applyFinancialDivisionMovement(database, { careerId: career.careerId, completedSeason: 1 }))
+        .rejects.toThrow("all 72 team season settlements");
       expect(await database.query("SELECT COUNT(*) AS count FROM team_division_history;")).toEqual([{ count: 0 }]);
     } finally {
       await database.close();
