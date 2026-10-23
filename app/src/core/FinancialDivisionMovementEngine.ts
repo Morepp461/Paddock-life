@@ -159,7 +159,10 @@ export function resolveFinancialDivisionMovement(
         candidate.team.nextMovementCooldown === 0 &&
         candidate.targetAffordability >= PROMOTION_MIN_AFFORDABILITY &&
         candidate.team.reputation >= reputationThreshold(upperTier));
-      const selected = eligible[0] ?? ranked.find((candidate) => candidate.team.nextMovementCooldown === 0) ?? ranked[0]!;
+      const selected = eligible[0] ?? ranked.find((candidate) => candidate.team.nextMovementCooldown === 0);
+      if (!selected) {
+        throw new Error("Financial movement cannot fill a Tier " + upperTier + " vacancy without violating movement cooldown; transition must roll back.");
+      }
       const fromTier = selected.team.tier;
       movedThisSeason.add(selected.team.teamId);
       events.push({
