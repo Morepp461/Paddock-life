@@ -61,6 +61,19 @@ export function advanceWeather(
   return { condition: nextCondition, rainLapsElapsed };
 }
 
+/** Document 02, Section 3: WeatherAdaptation = 0.5 × Adaptability + 0.5 × WetSkill. */
+export function calculateWeatherAdaptation(input: {
+  readonly adaptability: number;
+  readonly wetSkill: number;
+}): number {
+  for (const [name, value] of [["Adaptability", input.adaptability], ["WetSkill", input.wetSkill]] as const) {
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      throw new RangeError(name + " harus berada pada rentang 0–100.");
+    }
+  }
+  return 0.5 * input.adaptability + 0.5 * input.wetSkill;
+}
+
 /** Document 02, Section 6. Adaptation is only applied in wet conditions. */
 export function calculateWeatherDeltaSeconds(input: {
   readonly condition: TrackCondition;

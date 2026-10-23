@@ -4,6 +4,7 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
 import { calculateCircuitCarScore } from "../core/CircuitCarScore";
+import { calculateWeatherAdaptation } from "../core/WeatherEngine";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
@@ -216,7 +217,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   const race = raceRows[0];
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
   const raceDrivers = await database.query(
-    `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.aggression,
+    `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.adaptability, d.tyre_management, d.aggression,
       d.overtaking, d.defending, d.starts, t.team_id, t.is_player_team, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
      FROM drivers d
      JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
@@ -252,7 +253,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     overtakingSkill: numberField(driver, "overtaking"), defendingSkill: numberField(driver, "defending"),
     setupScore: 50, formModifier: 0, aggression: numberField(driver, "aggression"),
     tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
-    compound: numberField(driver, "is_player_team") === 1 ? compound : aiCompound, weatherAdaptation: numberField(driver, "wet_skill"),
+    compound: numberField(driver, "is_player_team") === 1 ? compound : aiCompound, weatherAdaptation: calculateWeatherAdaptation({ adaptability: numberField(driver, "adaptability"), wetSkill: numberField(driver, "wet_skill") }),
   }));
   const weekend = simulateRaceWeekend({
     worldSeed: seed, season, round: Number(race.round), tier,

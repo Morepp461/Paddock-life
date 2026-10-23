@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SeededRandom } from "./SeededRandom";
 import {
   advanceWeather,
+  calculateWeatherAdaptation,
   calculateWeatherDeltaSeconds,
   createWeatherRandom,
   MINIMUM_RAIN_DURATION_LAPS,
@@ -27,6 +28,12 @@ describe("weather transition and lap delta", () => {
     }
     state = advanceWeather(state, alwaysRainAfterDry, new SeededRandom(99));
     expect(state).toEqual({ condition: "dry", rainLapsElapsed: 0 });
+  });
+
+  it("averages adaptability and wet skill using the documented formula", () => {
+    expect(calculateWeatherAdaptation({ adaptability: 80, wetSkill: 60 })).toBe(70);
+    expect(calculateWeatherAdaptation({ adaptability: 0, wetSkill: 100 })).toBe(50);
+    expect(() => calculateWeatherAdaptation({ adaptability: 101, wetSkill: 50 })).toThrow(RangeError);
   });
 
   it("calculates source weather delta and only applies adaptation when wet", () => {
