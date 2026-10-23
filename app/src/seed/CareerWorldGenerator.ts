@@ -110,7 +110,7 @@ async function insertDriver(
   database: IDatabase, input: {
     seed: string; index: number | string; careerId: string; teamId: string | null; tier: TierId;
     pool: NamePool; rng: SeededRandom; baseCountry: string; existingNames: Set<string>;
-    freeAgent?: boolean; academy?: boolean;
+    freeAgent?: boolean; academy?: boolean; season?: number;
   },
 ): Promise<string> {
   const dist = INITIAL_DISTRIBUTIONS[input.tier];
@@ -168,8 +168,8 @@ async function insertDriver(
     const rb = TIER_CONFIG[input.tier].requiredBudget;
     const salary = input.tier === 6 ? 0 : Math.round(rb * (input.academy ? 0.008 : 0.06));
     await database.run(
-      "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?);",
-      [stableId(input.seed, "contract", input.index), driverId, input.teamId, salary, Math.round(salary * 0.15), Math.round(salary * 0.02), Math.round(salary * 0.01), Math.round(salary * 0.08)],
+      "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      [stableId(input.seed, "contract", input.index), driverId, input.teamId, input.season ?? 1, input.season ?? 1, salary, Math.round(salary * 0.15), Math.round(salary * 0.02), Math.round(salary * 0.01), Math.round(salary * 0.08)],
     );
   }
   return driverId;
