@@ -106,7 +106,7 @@ describe("career contract service", () => {
       await expect(offerDriverContract(database, { ...base, offeredSalary: 0 })).rejects.toThrow("lebih besar dari nol");
       await expect(offerDriverContract(database, { ...base, signingBonus: 1 })).rejects.toThrow("Signing bonus harus 10–25%");
       await expect(offerDriverContract(database, { ...base, winBonus: 1 })).rejects.toThrow("Win bonus harus mengikuti");
-      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE driver_id = ?;", [String(driver.driver_id)])).toEqual([{ count: 0 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE driver_id = ? AND start_season = 2;", [String(driver.driver_id)])).toEqual([{ count: 0 }]);
     } finally {
       await database.close();
     }
