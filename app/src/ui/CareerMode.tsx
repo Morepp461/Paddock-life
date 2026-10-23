@@ -911,6 +911,22 @@ export default function CareerMode() {
       setSeasonProgress("Season " + rollover.currentSeason + " is ready: " + rollover.aiTeamsReady + " AI teams have valid race rosters.");
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "Keputusan promosi gagal; save tetap dipertahankan.");
+      try {
+        const currentPlayer = (await database.query(
+          "SELECT team_id, name, division_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1 LIMIT 1;",
+          [activeSave.careerId],
+        ))[0];
+        if (currentPlayer) {
+          const currentTier = tierFromValue(field(currentPlayer, "division_id"));
+          const recoveredSave = {
+            ...activeSave, teamName: field(currentPlayer, "name", activeSave.teamName),
+            tier: currentTier, savedAt: new Date().toISOString(),
+          };
+          setActiveSave(recoveredSave);
+          writeSaveSlots(readSaveSlots().map((slot) => slot.dbName === recoveredSave.dbName ? recoveredSave : slot));
+          setDashboard(await loadDashboard(database, activeSave.careerId, String(currentPlayer.team_id), currentTier));
+        }
+      } catch { /* Keep the original recovery error visible; the local database remains authoritative. */ }
     } finally { setSettlingSeason(false); }
   }
 
