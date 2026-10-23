@@ -48,7 +48,14 @@ describe("season financial settlement", () => {
       expect(result.settlements[0]?.constructorPosition).toBe(1);
       expect(result.settlements[0]?.prizeMoney).toBeGreaterThan(result.settlements[11]?.prizeMoney ?? 0);
       expect(await database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = 1;", [career.careerId])).toEqual([{ count: 12 }]);
-      await expect(settleCareerSeason(database, { careerId: career.careerId, season: 1, tier: 3 })).rejects.toThrow("sudah diselesaikan");
+      const financeCountBeforeRetry = await database.query("SELECT COUNT(*) AS count FROM finances WHERE team_id IN (SELECT team_id FROM teams WHERE career_id = ?) AND season = 1;", [career.careerId]);
+      const repeated = await settleCareerSeason(database, { careerId: career.careerId, season: 1, tier: 3 });
+      expect(repeated).toEqual(result);
+      expect(await database.query("SELECT COUNT(*) AS count FROM finances WHERE team_id IN (SELECT team_id FROM teams WHERE career_id = ?) AND season = 1;", [career.careerId])).toEqual(financeCountBeforeRetry);
+      await database.run("UPDATE races SET status = 'completed' WHERE division_id = 'T2' AND season = 1;");
+      const otherTierResult = await settleCareerSeason(database, { careerId: career.careerId, season: 1, tier: 2 });
+      expect(otherTierResult.teamsSettled).toBe(12);
+      expect(await database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = 1;", [career.careerId])).toEqual([{ count: 24 }]);
     } finally {
       await database.close();
     }
