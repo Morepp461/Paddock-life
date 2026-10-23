@@ -492,7 +492,7 @@ export async function generateTier6ReplacementTeams(
   if (!careerRows[0]) throw new Error("Career untuk Tier 6 replacement tidak ditemukan.");
   if (!movementSteps[0]) throw new Error("Financial division movement harus selesai sebelum Tier 6 replacement.");
   if (priorSteps.length) throw new Error("Tier 6 replacement sudah dijalankan untuk season " + input.season + ".");
-  const activeCount = n(activeTier6Rows[0], "count");
+  const activeCount = Number(activeTier6Rows[0]?.count ?? 0);
   if (activeCount > 12) throw new Error("Tier 6 sudah memiliki lebih dari 12 tim aktif; replacement dibatalkan.");
   const movementResult = JSON.parse(String(movementSteps[0].result_json)) as { newTier6SlotsNeeded?: unknown };
   const expectedSlots = Number(movementResult.newTier6SlotsNeeded);
@@ -517,7 +517,7 @@ export async function generateTier6ReplacementTeams(
     );
     if (repeated.length) throw new Error("Tier 6 replacement sudah dijalankan untuk season " + input.season + ".");
     const liveTier6 = await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND division_id = 'T6' AND is_active = 1;", [input.careerId]);
-    if (n(liveTier6[0], "count") !== activeCount) throw new Error("Tier 6 berubah selama replacement dipersiapkan; coba ulangi transisi.");
+    if (Number(liveTier6[0]?.count ?? 0) !== activeCount) throw new Error("Tier 6 berubah selama replacement dipersiapkan; coba ulangi transisi.");
 
     for (let index = 0; index < slotsToFill; index += 1) {
       let teamName = "";
@@ -605,7 +605,7 @@ export async function generateTier6ReplacementTeams(
       );
       const projections = calculateFinancialIncomeProjections({
         activeSponsorRevenue: 0,
-        averageDriverFanPopularity: n(popularityRows[0], "average_popularity"),
+        averageDriverFanPopularity: Number(popularityRows[0]?.average_popularity ?? 0),
       });
       const affordability = (cash + projections.byTier[6]) / config.requiredBudget;
       await database.run(
@@ -621,7 +621,7 @@ export async function generateTier6ReplacementTeams(
     }
 
     const finalCount = await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND division_id = 'T6' AND is_active = 1;", [input.careerId]);
-    if (n(finalCount[0], "count") !== 12) throw new Error("Tier 6 harus memiliki tepat 12 tim aktif setelah replacement.");
+    if (Number(finalCount[0]?.count ?? 0) !== 12) throw new Error("Tier 6 harus memiliki tepat 12 tim aktif setelah replacement.");
 
     await database.run(
       "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, 'tier6-replacement', ?);",
