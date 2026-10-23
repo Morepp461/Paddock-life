@@ -136,6 +136,13 @@ export class SaveManager {
     return restored;
   }
 
+  async deleteSlot(slotId: string): Promise<void> {
+    validateSlotId(slotId);
+    for (const key of SAVE_KEYS) {
+      await this.storage.delete(slotId, key);
+    }
+  }
+
   async verifyRecord(record: SaveRecord, slotId: string, careerId: string): Promise<void> {
     validateRecordMetadata(record, slotId, careerId);
     const actual = await this.digest(record.data);
