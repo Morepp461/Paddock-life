@@ -72,6 +72,22 @@ describe("SaveManager", () => {
     expect(Array.from((await manager.load("slot3", "career3"))!.data)).toEqual([1]);
   });
 
+  it("does not rotate a corrupt backup into the older backup slot", async () => {
+    const storage = new MemorySaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot-corrupt-backup", careerId: "career-corrupt-backup", data: new Uint8Array([1]), trigger: "manual", isSandbox: false });
+    await manager.save({ slotId: "slot-corrupt-backup", careerId: "career-corrupt-backup", data: new Uint8Array([2]), trigger: "race-completed", isSandbox: false });
+    const backup = await storage.read("slot-corrupt-backup", "backup-1");
+    if (!backup) throw new Error("Backup is missing.");
+    await storage.writeAtomic("slot-corrupt-backup", "backup-1", { ...backup, data: new Uint8Array([77]) });
+
+    await manager.save({ slotId: "slot-corrupt-backup", careerId: "career-corrupt-backup", data: new Uint8Array([3]), trigger: "race-completed", isSandbox: false });
+
+    expect(await storage.read("slot-corrupt-backup", "backup-2")).toBeNull();
+    expect(Array.from((await storage.read("slot-corrupt-backup", "backup-1"))!.data)).toEqual([2]);
+    expect(Array.from((await manager.load("slot-corrupt-backup", "career-corrupt-backup"))!.data)).toEqual([3]);
+  });
+
   it("deletes current and both rotating backups for a removed slot", async () => {
     const storage = new MemorySaveStorage();
     const manager = makeManager(storage);
