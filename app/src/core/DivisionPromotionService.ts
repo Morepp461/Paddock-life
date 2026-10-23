@@ -184,14 +184,7 @@ export async function resolveDivisionPromotionChoice(
   if (targetTier < highestUnlockedTier) {
     throw new Error("Divisi target belum terbuka untuk save ini.");
   }
-  const bottomRows = await database.query(
-    "SELECT team_id, division_id, affordability FROM teams WHERE career_id = ? AND team_id = ? AND is_active = 1 AND is_player_team = 0;",
-    [input.careerId, String(offer.target_team_id)],
-  );
-  const bottom = bottomRows[0];
-  if (!bottom || tierValue(bottom.division_id) !== targetTier) {
-    throw new Error("Tim penukar tidak lagi menempati divisi target; keputusan promosi dihentikan agar jumlah tim tidak rusak.");
-  }
+  let exchangedTeamId = "";
   await database.transaction(async () => {
     const currentTeamRows = await database.query(
       "SELECT division_id, affordability FROM teams WHERE career_id = ? AND team_id = ? AND is_player_team = 1 AND is_active = 1;",
@@ -200,7 +193,16 @@ export async function resolveDivisionPromotionChoice(
     if (!currentTeamRows[0] || tierValue(currentTeamRows[0].division_id) !== currentTier) {
       throw new Error("Divisi tim pemain berubah sejak promotion offer dibuat.");
     }
-    await database.run("UPDATE teams SET division_id = ? WHERE team_id = ?;", ["T" + currentTier, String(bottom.team_id)]);
+    const bottomRows = await database.query(
+      "SELECT team_id, division_id, affordability FROM teams WHERE career_id = ? AND team_id = ? AND is_active = 1 AND is_player_team = 0;",
+      [input.careerId, String(offer.target_team_id)],
+    );
+    const bottom = bottomRows[0];
+    if (!bottom || tierValue(bottom.division_id) !== targetTier) {
+      throw new Error("Tim penukar tidak lagi menempati divisi target; keputusan promosi dihentikan agar jumlah tim tidak rusak.");
+    }
+    exchangedTeamId = String(bottom.team_id);
+    await database.run("UPDATE teams SET division_id = ? WHERE team_id = ?;", ["T" + currentTier, exchangedTeamId]);
     await database.run("UPDATE teams SET division_id = ? WHERE team_id = ?;", ["T" + targetTier, teamId]);
     await database.run("UPDATE career SET current_division_tier = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [targetTier, input.careerId]);
     await database.run(
@@ -210,13 +212,13 @@ export async function resolveDivisionPromotionChoice(
     );
     await database.run(
       "INSERT INTO team_division_history (history_id, career_id, team_id, season, from_tier, to_tier, reason, affordability) VALUES (?, ?, ?, ?, ?, ?, 'player_move', ?);",
-      [stableId(input.careerId, String(bottom.team_id), numberValue(offer, "season")) + "_exchange", input.careerId,
-        String(bottom.team_id), numberValue(offer, "season") + 1, targetTier, currentTier, numberValue(bottom, "affordability", 1)],
+      [stableId(input.careerId, exchangedTeamId, numberValue(offer, "season")) + "_exchange", input.careerId,
+        exchangedTeamId, numberValue(offer, "season") + 1, targetTier, currentTier, numberValue(bottom, "affordability", 1)],
     );
     await database.run(
       "UPDATE division_promotion_offers SET status = 'promoted', resolved_at = CURRENT_TIMESTAMP WHERE offer_id = ? AND status = 'pending';",
       [input.offerId],
     );
   });
-  return { teamId, tier: targetTier, promoted: true, exchangedTeamId: String(bottom.team_id) };
+  return { teamId, tier: targetTier, promoted: true, exchangedTeamId };
 }
