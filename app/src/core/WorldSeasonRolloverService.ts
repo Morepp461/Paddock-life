@@ -190,41 +190,59 @@ async function prepareAiRoster(
     }
 
     if (tier === 6) {
-      // Tier 6 has no payroll and is a youth feeder. Retain eligible returning drivers,
-      // then create age-eligible rookies for any remaining seat.
-      const existing = await database.query(
-        `SELECT d.driver_id FROM drivers d
-         JOIN driver_contracts old_dc ON old_dc.driver_id = d.driver_id
-         WHERE d.career_id = ? AND old_dc.team_id = ? AND old_dc.start_season <= ? AND old_dc.end_season = ?
-           AND d.is_retired = 0 AND d.is_academy_driver = 0
-           AND d.age + 1 BETWEEN ? AND ?
-           AND NOT EXISTS (SELECT 1 FROM driver_contracts next_dc WHERE next_dc.driver_id = d.driver_id AND next_dc.start_season <= ? AND next_dc.end_season >= ?)
-         ORDER BY d.pace DESC, d.driver_id;`,
-        [input.careerId, teamId, input.completedSeason, input.completedSeason,
-          TIER_CONFIG[6].driverAge.min, TIER_CONFIG[6].driverAge.max, input.nextSeason, input.nextSeason],
-      );
-      for (const driver of existing) {
-        const contractId = markerId(input.worldSeed, "tier6-renewal", input.nextSeason + "-" + teamId + "-" + String(driver.driver_id));
-        await database.run(
-          "INSERT OR IGNORE INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, NULL, 0, 0);",
-          [contractId, String(driver.driver_id), teamId, input.nextSeason, input.nextSeason],
+      let generatedForTeam: string[] = [];
+      await database.transaction(async () => {
+        const concurrentMarker = await database.query(
+          "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
+          [input.careerId, input.nextSeason, step],
         );
-        if (await activeEligibleDriverCount(database, teamId, input.nextSeason, 6, false) >= 2) break;
-      }
-      const eligibleNow = await activeEligibleDriverCount(database, teamId, input.nextSeason, 6, false);
-      const missing = Math.max(0, 2 - eligibleNow);
-      if (missing) {
-        const generated = await database.transaction(() => generateTier6RookieDrivers(database, {
-          careerId: input.careerId, teamId, season: input.nextSeason, count: missing,
-        }));
-        newTier6DriverIds.push(...generated);
-      }
-      const finalCount = await activeEligibleDriverCount(database, teamId, input.nextSeason, 6, false);
-      if (finalCount !== 2) throw new Error("Tier 6 team " + teamId + " tidak memiliki tepat dua driver eligible setelah rookie generation.");
-      await database.run(
-        "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
-        [input.careerId, input.nextSeason, step, JSON.stringify({ teamId, newDriverIds: newTier6DriverIds })],
-      );
+        if (concurrentMarker[0]) {
+          const saved = JSON.parse(String(concurrentMarker[0].result_json)) as { newDriverIds?: unknown };
+          if (Array.isArray(saved.newDriverIds)) generatedForTeam = saved.newDriverIds.map(String);
+          return;
+        }
+
+        // Replacement teams already have next-season cars, drivers and contracts from their generator.
+        if (n(team, "founded_season") >= input.nextSeason) {
+          const replacementCount = await activeEligibleDriverCount(database, teamId, input.nextSeason, 6, false);
+          if (replacementCount !== 2) throw new Error("New Tier 6 team " + teamId + " tidak memiliki dua driver season barunya.");
+        } else {
+          const returning = await database.query(
+            `SELECT d.driver_id FROM drivers d
+             JOIN driver_contracts old_dc ON old_dc.driver_id = d.driver_id
+             WHERE d.career_id = ? AND old_dc.team_id = ? AND old_dc.start_season <= ? AND old_dc.end_season = ?
+               AND d.is_retired = 0 AND d.is_academy_driver = 0
+               AND d.age + 1 BETWEEN ? AND ?
+               AND NOT EXISTS (SELECT 1 FROM driver_contracts next_dc WHERE next_dc.driver_id = d.driver_id AND next_dc.start_season <= ? AND next_dc.end_season >= ?)
+             ORDER BY d.pace DESC, d.driver_id;`,
+            [input.careerId, teamId, input.completedSeason, input.completedSeason,
+              TIER_CONFIG[6].driverAge.min, TIER_CONFIG[6].driverAge.max, input.nextSeason, input.nextSeason],
+          );
+          for (const driver of returning) {
+            const contractId = markerId(input.worldSeed, "tier6-renewal", input.nextSeason + "-" + teamId + "-" + String(driver.driver_id));
+            await database.run(
+              "INSERT OR IGNORE INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, NULL, 0, 0);",
+              [contractId, String(driver.driver_id), teamId, input.nextSeason, input.nextSeason],
+            );
+            if (await activeEligibleDriverCount(database, teamId, input.nextSeason, 6, true) >= 2) break;
+          }
+          const oldEligibleCount = await activeEligibleDriverCount(database, teamId, input.nextSeason, 6, true);
+          const missing = Math.max(0, 2 - oldEligibleCount);
+          if (missing) {
+            generatedForTeam = [...await generateTier6RookieDrivers(database, {
+              careerId: input.careerId, teamId, season: input.nextSeason, count: missing,
+            })];
+          }
+          if (oldEligibleCount + generatedForTeam.length !== 2) {
+            throw new Error("Tier 6 team " + teamId + " tidak memiliki tepat dua driver eligible setelah rookie generation.");
+          }
+        }
+        await database.run(
+          "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
+          [input.careerId, input.nextSeason, step, JSON.stringify({ teamId, newDriverIds: generatedForTeam })],
+        );
+      });
+      newTier6DriverIds.push(...generatedForTeam);
       aiTeamsReady += 1;
       continue;
     }
