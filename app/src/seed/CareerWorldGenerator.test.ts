@@ -51,6 +51,7 @@ describe("atomic career world generation", () => {
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND is_academy_driver = 1;", [result.careerId])).toEqual([{ count: 96 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM races;")).toEqual([{ count: result.racesScheduled }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND is_player_team = 1;", [result.careerId])).toEqual([{ count: 1 }]);
+      expect(await database.query("SELECT confidence, consecutive_primary_misses FROM career_managers WHERE career_id = ? AND is_player = 1;", [result.careerId])).toEqual([{ confidence: 60, consecutive_primary_misses: 0 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM sponsor_offers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: result.sponsorOffersCreated }]);
     } finally {
       await database.close();
@@ -83,6 +84,7 @@ describe("atomic career world generation", () => {
       const playerTeam = await database.query("SELECT name, strength_grade, finance_grade, performance_grade, base_country FROM teams WHERE career_id = ? AND is_player_team = 1;", [result.careerId]);
       expect(playerTeam).toEqual([{ name: "Paddock Dynamics", strength_grade: "C", finance_grade: "C", performance_grade: "C", base_country: "Indonesia" }]);
       expect(await database.query("SELECT highest_unlocked_tier FROM career WHERE career_id = ?;", [result.careerId])).toEqual([{ highest_unlocked_tier: 3 }]);
+      expect(await database.query("SELECT confidence FROM career_managers WHERE career_id = ? AND is_player = 1;", [result.careerId])).toEqual([{ confidence: 70 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 72 }]);
     } finally {
       await database.close();

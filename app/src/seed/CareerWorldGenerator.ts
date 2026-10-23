@@ -340,9 +340,12 @@ export async function generateCareerWorld(
     const playerManagerId = stableId(seed, "manager", "player");
     const playerManagerGender = options.managerGender ?? (rng.next() < 0.15 ? "female" : "male");
     const managerCulture = chooseCulture(pool, country, rng);
+    const managerConfidenceBase = validated.path === "new-team" ? 70 : 60;
+    const managerConfidenceDifficulty = validated.difficulty === "easy" ? 10 : validated.difficulty === "hard" ? -10 : 0;
+    const initialManagerConfidence = Math.max(0, Math.min(100, managerConfidenceBase + managerConfidenceDifficulty));
     await database.run(
-      "INSERT INTO career_managers (manager_id, career_id, team_id, name, nationality, name_culture, gender, age, reputation, is_player, status) VALUES (?, ?, ?, ?, ?, ?, ?, 30, ?, 1, 'active');",
-      [playerManagerId, careerId, playerTeamId, validated.managerName, managerCountry, managerCulture, playerManagerGender, INITIAL_DISTRIBUTIONS[validated.selectedTier].reputationRange[0]],
+      "INSERT INTO career_managers (manager_id, career_id, team_id, name, nationality, name_culture, gender, age, reputation, is_player, status, confidence, consecutive_primary_misses) VALUES (?, ?, ?, ?, ?, ?, ?, 30, ?, 1, 'active', ?, 0);",
+      [playerManagerId, careerId, playerTeamId, validated.managerName, managerCountry, managerCulture, playerManagerGender, INITIAL_DISTRIBUTIONS[validated.selectedTier].reputationRange[0], initialManagerConfidence],
     );
     managersCreated += 1;
 
