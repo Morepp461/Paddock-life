@@ -54,6 +54,16 @@ describe("player division promotion choices", () => {
           ["promotion-champion-" + index, id, id === teamId ? 100 : 20 - index],
         );
       }
+      const upperTeams = await database.query(
+        "SELECT team_id FROM teams WHERE career_id = ? AND division_id = 'T2' AND is_active = 1 ORDER BY team_id;",
+        [career.careerId],
+      );
+      for (let index = 0; index < upperTeams.length; index += 1) {
+        await database.run(
+          "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, 'T2', NULL, ?, ?, 0, 0, 0, 0, 0);",
+          ["promotion-upper-" + index, String(upperTeams[index]!.team_id), 100 - index],
+        );
+      }
       const offer = await prepareDivisionPromotionOffer(database, { careerId: career.careerId, completedSeason: 1 });
       expect(offer?.targetTier).toBe(2);
       expect(offer?.unlockAwarded).toBe(true);
