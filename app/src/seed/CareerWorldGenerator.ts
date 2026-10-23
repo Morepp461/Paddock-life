@@ -674,3 +674,43 @@ export async function generateTier6RookieDrivers(
   }
   return ids;
 }
+
+
+/**
+ * Generates a deterministic, age-eligible next-season free agent for AI transfer
+ * windows. The age is stored one season earlier so contract validation and the
+ * rollover age step advance it exactly once into the requested season.
+ */
+export async function generateSeasonFreeAgentDriver(
+  database: IDatabase,
+  input: { readonly careerId: string; readonly tier: Exclude<TierId, 6>; readonly season: number; readonly slot: number },
+): Promise<string> {
+  if (!input.careerId.trim() || !Number.isSafeInteger(input.season) || input.season < 2 ||
+      !Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 500) {
+    throw new RangeError("Parameter rookie free-agent season tidak valid.");
+  }
+  const careerRows = await database.query("SELECT world_seed FROM career WHERE career_id = ?;", [input.careerId]);
+  if (!careerRows[0]) throw new Error("Career untuk rookie free-agent tidak ditemukan.");
+  const seed = String(careerRows[0].world_seed);
+  const pool = await loadNamePoolFromDatabase(database);
+  const peopleRows = await database.query(
+    "SELECT name FROM drivers WHERE career_id = ? UNION SELECT name FROM staff WHERE career_id = ? UNION SELECT name FROM career_managers WHERE career_id = ?;",
+    [input.careerId, input.careerId, input.careerId],
+  );
+  const existingNames = new Set(peopleRows.map((row) => normalizeFullName(String(row.name))));
+  const rng = new SeededRandom(hashSeed([seed, "season-free-agent", input.season, input.tier, input.slot]));
+  const driverId = await insertDriver(database, {
+    seed,
+    index: "season-free-agent-" + input.season + "-" + input.tier + "-" + input.slot,
+    careerId: input.careerId,
+    teamId: null,
+    tier: input.tier,
+    pool,
+    rng,
+    baseCountry: "",
+    existingNames,
+    season: input.season,
+  });
+  await database.run("UPDATE drivers SET age = age - 1 WHERE driver_id = ? AND career_id = ?;", [driverId, input.careerId]);
+  return driverId;
+}
