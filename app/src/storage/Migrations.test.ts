@@ -28,10 +28,10 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }]);
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");
