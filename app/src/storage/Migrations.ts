@@ -581,6 +581,27 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     `,
   },
   {
+    version: 15,
+    description: "record deterministic driver retirement decisions during season rollover",
+    sql: `
+      ALTER TABLE drivers ADD COLUMN gender TEXT CHECK (gender IN ('male', 'female'));
+      CREATE TABLE driver_retirement_events (
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 2),
+        previous_age INTEGER NOT NULL CHECK (previous_age >= 0),
+        age_after INTEGER NOT NULL CHECK (age_after > previous_age),
+        retirement_probability REAL NOT NULL CHECK (retirement_probability BETWEEN 0 AND 1),
+        became_staff_candidate INTEGER NOT NULL CHECK (became_staff_candidate IN (0, 1)),
+        reason TEXT NOT NULL CHECK (reason = 'age'),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (career_id, driver_id, season)
+      );
+      CREATE INDEX idx_driver_retirement_events_season
+        ON driver_retirement_events(career_id, season, became_staff_candidate);
+    `,
+  },
+  {
     version: 14,
     description: "persist player division unlock and promotion choices",
     sql: `
