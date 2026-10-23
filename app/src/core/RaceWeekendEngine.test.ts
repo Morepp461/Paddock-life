@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TIER_CONFIG, type TierId } from "./GameConfig";
-import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
+import { calculateMainRacePoints, calculateSprintRacePoints, calculateStartingGrid, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
 import type { WeatherTransitionMatrix } from "./WeatherEngine";
 
 function drivers(count: number, compound: RaceWeekendDriver["compound"] = "medium"): RaceWeekendDriver[] {
@@ -17,10 +17,51 @@ function drivers(count: number, compound: RaceWeekendDriver["compound"] = "mediu
     mechanicalGrip: 70,
     compound,
     weatherAdaptation: 50,
+    starts: 50,
+    racecraft: 60,
+    overtakingSkill: 55,
+    defendingSkill: 55,
   }));
 }
 
 describe("race weekend orchestration", () => {
+  it("uses the source-defined starts attribute to adjust the qualifying grid by up to three places", () => {
+    const roster = drivers(24).map((driver, index) => ({ ...driver, starts: index === 23 ? 100 : 0 }));
+    const result = simulateRaceWeekend({
+      worldSeed: "start-delta-test", season: 1, round: 1, tier: 1,
+      estimatedCircuitLapSeconds: 90, totalLaps: 8, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry", referenceSetupScore: 50,
+      hasSprint: false, drivers: roster,
+    });
+    const qualifyingGrid = new Map(result.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
+    const adjustedGrid = calculateStartingGrid({
+      worldSeed: "start-delta-test", season: 1, round: 1, session: "race",
+      qualifying: result.qualifying, drivers: roster,
+    });
+    const highStartsDriver = adjustedGrid.indexOf("D24") + 1;
+    expect(highStartsDriver).toBeLessThanOrEqual((qualifyingGrid.get("D24") ?? 24) - 3);
+    expect(adjustedGrid).toHaveLength(24);
+    expect(new Set(adjustedGrid).size).toBe(24);
+  });
+
+  it("allows a faster driver to attempt and make source-modelled overtakes instead of auto-sorting only by lap time", () => {
+    const roster = drivers(24).map((driver, index) => index === 0
+      ? { ...driver, carScore: 30, driverScore: 30, qualifyingScore: 100, racecraft: 0, overtakingSkill: 0, defendingSkill: 0 }
+      : index === 23
+        ? { ...driver, carScore: 100, driverScore: 100, qualifyingScore: 0, racecraft: 100, overtakingSkill: 100, defendingSkill: 100 }
+        : { ...driver, racecraft: 50, overtakingSkill: 50, defendingSkill: 50 });
+    const result = simulateRaceWeekend({
+      worldSeed: "overtake-integration-test", season: 1, round: 1, tier: 1,
+      estimatedCircuitLapSeconds: 90, totalLaps: 8, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry", referenceSetupScore: 50,
+      hasSprint: false, overtakingDifficulty: 1, drivers: roster,
+    });
+    const gridPosition = result.qualifying.classification.find((row) => row.driverId === "D24")!.gridPosition;
+    const lapOnePosition = result.race.laps[0]!.find((row) => row.driverId === "D24")!.position;
+    expect(gridPosition).toBeGreaterThan(12);
+    expect(lapOnePosition).toBeLessThan(gridPosition);
+    expect(result.race.classification).toHaveLength(24);
+  });
   it("runs qualifying, sprint, and race reproducibly for a sprint tier", () => {
     const input = {
       worldSeed: "race-weekend-test",
