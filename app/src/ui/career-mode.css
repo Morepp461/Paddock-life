@@ -24,3 +24,5 @@
 .job-offer-row>div:first-child{display:grid;gap:3px;min-width:0}
 .job-offer-row small{color:var(--cm-muted);font-size:11px;text-transform:capitalize}
 @media(max-width:480px){.job-offer-row{align-items:stretch;flex-direction:column}.job-offer-row .sponsor-actions{flex-direction:row}.job-offer-row .mini-action{width:auto;flex:1}}
+
+.race-strategy-grid{grid-template-columns:minmax(0,1fr);max-width:320px;margin:0 0 18px}
