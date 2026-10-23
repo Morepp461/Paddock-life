@@ -28,10 +28,26 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "game_config",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }]);
+    const gameConfigColumns = await database.query("PRAGMA table_info(game_config);");
+    expect(gameConfigColumns.map((column) => column.name)).toContain("config_key");
+    expect(gameConfigColumns.map((column) => column.name)).toContain("value_json");
+    expect(gameConfigColumns.map((column) => column.name)).toContain("source_document");
+    await database.run(
+      "INSERT INTO game_config (config_key, scope, scope_id, value_json, source_document) VALUES (?, ?, ?, ?, ?);",
+      ["example.test", "global", "global", JSON.stringify({ enabled: true }), "test fixture"],
+    );
+    await expect(database.run(
+      "INSERT INTO game_config (config_key, scope, scope_id, value_json, source_document) VALUES (?, ?, ?, ?, ?);",
+      ["example.test", "global", "global", JSON.stringify({ enabled: false }), "test fixture"],
+    )).rejects.toThrow();
+    await expect(database.run(
+      "INSERT INTO game_config (config_key, scope, scope_id, value_json, source_document) VALUES (?, ?, ?, ?, ?);",
+      ["example.invalid-json", "global", "global", "{", "test fixture"],
+    )).rejects.toThrow();
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");

@@ -602,7 +602,27 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         ON division_promotion_offers(career_id, team_id, status, season);
     `,
   },
-];
+  {
+    version: 15,
+    description: "add source-traceable simulation configuration storage",
+    sql: `
+      CREATE TABLE game_config (
+        config_key TEXT NOT NULL CHECK (length(trim(config_key)) > 0),
+        scope TEXT NOT NULL DEFAULT 'global' CHECK (scope IN ('global', 'tier', 'circuit')),
+        scope_id TEXT NOT NULL DEFAULT 'global' CHECK (length(trim(scope_id)) > 0),
+        value_json TEXT NOT NULL CHECK (json_valid(value_json)),
+        source_document TEXT NOT NULL CHECK (length(trim(source_document)) > 0),
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (config_key, scope, scope_id),
+        CHECK (
+          (scope = 'global' AND scope_id = 'global') OR
+          (scope IN ('tier', 'circuit') AND scope_id <> 'global')
+        )
+      );
+      CREATE INDEX idx_game_config_scope ON game_config(scope, scope_id);
+    `,
+  },
+]; 
 
 export async function runMigrations(database: IDatabase): Promise<void> {
   await database.execute(`
