@@ -1,5 +1,5 @@
 import type { IDatabase } from "../storage/IDatabase";
-import type { DivisionMovementEvent, FinancialDivisionMovementResult } from "./FinancialDivisionMovementEngine";
+import type { DivisionMovementEvent } from "./FinancialDivisionMovementEngine";
 import { applyFinancialDivisionMovement } from "./FinancialDivisionMovementService";
 import { generateTier6ReplacementTeams } from "../seed/CareerWorldGenerator";
 
@@ -42,11 +42,7 @@ export async function transitionWorldAfterSeason(
   ]);
   if (!careerRows.length) throw new Error("Career untuk world season transition tidak ditemukan.");
 
-  let movement: Pick<FinancialDivisionMovementResult, "events" | "newTier6SlotsNeeded" | "teams"> | {
-    events: readonly DivisionMovementEvent[];
-    newTier6SlotsNeeded: number;
-    teams: readonly never[];
-  };
+  let movement: { readonly events: readonly DivisionMovementEvent[]; readonly newTier6SlotsNeeded: number };
   if (movementRows[0]) {
     const saved = parseObject(movementRows[0].result_json);
     if (!Array.isArray(saved.events) || !Number.isSafeInteger(saved.newTier6SlotsNeeded)) {
@@ -55,7 +51,6 @@ export async function transitionWorldAfterSeason(
     movement = {
       events: saved.events as DivisionMovementEvent[],
       newTier6SlotsNeeded: Number(saved.newTier6SlotsNeeded),
-      teams: [],
     };
   } else {
     movement = await applyFinancialDivisionMovement(database, {
