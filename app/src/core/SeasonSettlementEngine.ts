@@ -220,7 +220,7 @@ export async function settleCareerSeason(
 
   const committed: TeamSeasonSettlement[] = [];
   await database.transaction(async () => {
-    const alreadySettled = await database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = ?;", [input.careerId, input.season]);
+    const alreadySettled = await database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = ? AND division_id = ?;", [input.careerId, input.season, divisionId]);
     if (Number(alreadySettled[0]?.count ?? 0) > 0) throw new Error("Season ini sudah diselesaikan.");
     for (const settlement of staged) {
       const teamRows = await database.query("SELECT cash FROM teams WHERE team_id = ? AND career_id = ?;", [settlement.teamId, input.careerId]);
