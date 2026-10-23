@@ -104,11 +104,16 @@ export class SaveManager {
     return { ...record, data: new Uint8Array(record.data) };
   }
 
-  async restoreBackup(slotId: string, careerId: string, backup: "backup-1" | "backup-2"): Promise<SaveRecord> {
+  async loadBackup(slotId: string, careerId: string, backup: "backup-1" | "backup-2"): Promise<SaveRecord> {
     validateSlotId(slotId);
     const record = await this.storage.read(slotId, backup);
     if (!record) throw new Error("Backup save tidak ditemukan.");
     await this.verifyRecord(record, slotId, careerId);
+    return { ...record, data: new Uint8Array(record.data) };
+  }
+
+  async restoreBackup(slotId: string, careerId: string, backup: "backup-1" | "backup-2"): Promise<SaveRecord> {
+    const record = await this.loadBackup(slotId, careerId, backup);
 
     const current = await this.storage.read(slotId, "current");
     if (current) {
