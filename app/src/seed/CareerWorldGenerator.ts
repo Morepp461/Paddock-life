@@ -6,6 +6,7 @@ import { hashSeed, sampleBoundedNormal as sampleDelta } from "../core/RandomDist
 import { generateSeasonCalendar } from "../core/SeasonCalendar";
 import { selectSponsorTier } from "../core/SponsorEngine";
 import { calculateEntryFee } from "../core/EconomyEngine";
+import { calculateFinancialIncomeProjections } from "../core/FinancialIncomeProjectionEngine";
 import { validateCareerSetupDraft, type CareerSetupDraft, type ValidatedCareerSetup, type CareerTeamCandidate } from "../core/CareerSetupEngine";
 import { generateName, normalizeFullName, type CountryNameProfile, type NameCulture, type NamePool } from "./NameGenerator";
 import { seedStaticWorldDataFromPublic } from "./WorldSeeder";
@@ -110,7 +111,7 @@ async function insertDriver(
   database: IDatabase, input: {
     seed: string; index: number | string; careerId: string; teamId: string | null; tier: TierId;
     pool: NamePool; rng: SeededRandom; baseCountry: string; existingNames: Set<string>;
-    freeAgent?: boolean; academy?: boolean;
+    freeAgent?: boolean; academy?: boolean; season?: number;
   },
 ): Promise<string> {
   const dist = INITIAL_DISTRIBUTIONS[input.tier];
@@ -168,8 +169,8 @@ async function insertDriver(
     const rb = TIER_CONFIG[input.tier].requiredBudget;
     const salary = input.tier === 6 ? 0 : Math.round(rb * (input.academy ? 0.008 : 0.06));
     await database.run(
-      "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus) VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?);",
-      [stableId(input.seed, "contract", input.index), driverId, input.teamId, salary, Math.round(salary * 0.15), Math.round(salary * 0.02), Math.round(salary * 0.01), Math.round(salary * 0.08)],
+      "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      [stableId(input.seed, "contract", input.index), driverId, input.teamId, input.season ?? 1, input.season ?? 1, salary, Math.round(salary * 0.15), Math.round(salary * 0.02), Math.round(salary * 0.01), Math.round(salary * 0.08)],
     );
   }
   return driverId;
@@ -441,4 +442,192 @@ export async function generateCareerWorld(
     careerId, playerTeamId, selectedTier: validated.selectedTier,
     teamsCreated: 72, driversCreated, staffCreated, managersCreated, racesScheduled, sponsorOffersCreated,
   };
+}
+
+const TIER6_GENERATED_TEAM_PREFIXES = [
+  "Aldermere", "Brightmoor", "Corvath", "Dunmarrow", "Elmsworth", "Fenrick", "Galdover", "Harrowgate",
+  "Ivorwick", "Jasperin", "Kilmoor", "Lorrimer", "Marchmont", "Norvell", "Ostrander", "Pellmere",
+  "Quenby", "Ravensworth", "Stanmoor", "Thornbury", "Ulverley", "Vantham", "Wexcombe", "Yarrowdale",
+  "Zennor", "Caldwyn", "Darnley", "Eskdale", "Fairhaven", "Glenmoor", "Hartsdale", "Ironwood",
+  "Lakemoor", "Merrowdown", "Northcliff", "Oakhurst", "Pinewick", "Cakrawala", "Dwipa", "Gemilang",
+  "Kencana", "Mahardika", "Permata", "Samudra", "Tirtayasa",
+] as const;
+const TIER6_GENERATED_TEAM_SUFFIXES = [
+  "Racing", "Motorsport", "Autosport", "Speedworks", "Racing Team",
+  "Performance", "GP", "Competition", "Engineering", "Karting Team",
+] as const;
+const BLOCKED_REAL_TEAM_NAMES = [
+  "Ferrari", "McLaren", "Mercedes", "Red Bull", "Williams", "Alpine", "Renault", "Haas",
+  "Sauber", "Alfa Romeo", "AlphaTauri", "Aston Martin", "Lotus", "Brabham", "Tyrrell",
+  "Benetton", "Minardi", "Toyota", "Honda", "BMW", "Audi", "Porsche", "Cadillac", "Jordan",
+  "Toro Rosso", "Racing Point", "Force India", "Prost", "Arrows", "Jaguar", "Stewart", "Ligier",
+].map(normalizeFullName);
+
+export interface Tier6ReplacementGenerationResult {
+  readonly careerId: string;
+  readonly season: number;
+  readonly createdTeamIds: readonly string[];
+  readonly slotsFilled: number;
+}
+
+/** Source: Pool_Tim_v2 §7. Fills Tier 6 vacancies after financial movement, idempotently. */
+export async function generateTier6ReplacementTeams(
+  database: IDatabase,
+  input: { readonly careerId: string; readonly season: number },
+): Promise<Tier6ReplacementGenerationResult> {
+  if (!input.careerId.trim() || !Number.isSafeInteger(input.season) || input.season < 2) {
+    throw new RangeError("Career ID dan target season pengganti Tier 6 harus valid.");
+  }
+  const [careerRows, movementSteps, priorSteps, activeTier6Rows, existingTeamRows, existingPeopleRows] = await Promise.all([
+    database.query("SELECT world_seed FROM career WHERE career_id = ?;", [input.careerId]),
+    database.query("SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'financial-movement';", [input.careerId, input.season]),
+    database.query("SELECT step FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'tier6-replacement';", [input.careerId, input.season]),
+    database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND division_id = 'T6' AND is_active = 1;", [input.careerId]),
+    database.query("SELECT name FROM teams WHERE career_id = ?;", [input.careerId]),
+    database.query(
+      "SELECT name FROM drivers WHERE career_id = ? UNION SELECT name FROM staff WHERE career_id = ? UNION SELECT name FROM career_managers WHERE career_id = ?;",
+      [input.careerId, input.careerId, input.careerId],
+    ),
+  ]);
+  if (!careerRows[0]) throw new Error("Career untuk Tier 6 replacement tidak ditemukan.");
+  if (!movementSteps[0]) throw new Error("Financial division movement harus selesai sebelum Tier 6 replacement.");
+  if (priorSteps.length) throw new Error("Tier 6 replacement sudah dijalankan untuk season " + input.season + ".");
+  const activeCount = Number(activeTier6Rows[0]?.count ?? 0);
+  if (activeCount > 12) throw new Error("Tier 6 sudah memiliki lebih dari 12 tim aktif; replacement dibatalkan.");
+  const movementResult = JSON.parse(String(movementSteps[0].result_json)) as { newTier6SlotsNeeded?: unknown };
+  const expectedSlots = Number(movementResult.newTier6SlotsNeeded);
+  const slotsToFill = 12 - activeCount;
+  if (!Number.isSafeInteger(expectedSlots) || expectedSlots !== slotsToFill) {
+    throw new Error("Jumlah slot Tier 6 tidak cocok dengan hasil financial movement; world transition dibatalkan.");
+  }
+
+  const createdTeamIds: string[] = [];
+  const seed = String(careerRows[0].world_seed);
+  const pool = await loadNamePoolFromDatabase(database);
+  const existingTeamNames = new Set(existingTeamRows.map((row) => normalizeFullName(String(row.name))));
+  const existingNames = new Set(existingPeopleRows.map((row) => normalizeFullName(String(row.name))));
+  const rng = new SeededRandom(hashSeed([seed, input.season, "tier6-replacement-teams"]));
+  const config = TIER_CONFIG[6];
+  const distribution = INITIAL_DISTRIBUTIONS[6];
+
+  await database.transaction(async () => {
+    const repeated = await database.query(
+      "SELECT step FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'tier6-replacement';",
+      [input.careerId, input.season],
+    );
+    if (repeated.length) throw new Error("Tier 6 replacement sudah dijalankan untuk season " + input.season + ".");
+    const liveTier6 = await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND division_id = 'T6' AND is_active = 1;", [input.careerId]);
+    if (Number(liveTier6[0]?.count ?? 0) !== activeCount) throw new Error("Tier 6 berubah selama replacement dipersiapkan; coba ulangi transisi.");
+
+    for (let index = 0; index < slotsToFill; index += 1) {
+      let teamName = "";
+      for (let attempt = 0; attempt < 1000; attempt += 1) {
+        const candidate = pick(TIER6_GENERATED_TEAM_PREFIXES, rng) + " " + pick(TIER6_GENERATED_TEAM_SUFFIXES, rng);
+        const normalized = normalizeFullName(candidate);
+        if (!existingTeamNames.has(normalized) && !BLOCKED_REAL_TEAM_NAMES.includes(normalized)) {
+          teamName = candidate;
+          existingTeamNames.add(normalized);
+          break;
+        }
+      }
+      if (!teamName) throw new Error("Tidak dapat membuat nama tim Tier 6 yang unik dari katalog sumber.");
+
+      const country = pickCountry(pool, "", rng);
+      const financeGrade = pick(["C", "D"] as const, rng);
+      const performanceGrade = pick(["C", "D"] as const, rng);
+      const personality = pick(["Championship", "Aggressive", "Conservative", "Driver Development"] as const, rng);
+      const reputation = Math.round(distribution.reputationRange[0] + rng.next() * (distribution.reputationRange[1] - distribution.reputationRange[0]));
+      const facilityLevel = distribution.facilityLevelByFinance[financeGrade];
+      const grossCash = Math.round(config.requiredBudget * FINANCE_GRADE_MULTIPLIERS[financeGrade] * (0.85 + rng.next() * 0.3));
+      const entryFee = calculateEntryFee(6);
+      const cash = grossCash - entryFee;
+      const suffix = input.season + "-" + index;
+      const teamId = stableId(seed, "generated-tier6-team", suffix);
+      const teamReliability = clamp(distribution.reliabilityMean + PERFORMANCE_GRADE_OFFSETS[performanceGrade].reliability + sampleDelta(rng, 3), 1, 100);
+
+      await database.run(
+        `INSERT INTO teams
+          (team_id, career_id, division_id, pool_team_id, name, is_player_team, base_country, is_active, origin,
+           founded_season, strength_grade, finance_grade, performance_grade, personality, reputation, cash, debt, budget,
+           aero_center_level, engine_dept_level, chassis_level, simulator_level, rnd_level, academy_level, reliability)
+         VALUES (?, ?, 'T6', NULL, ?, 0, ?, 1, 'generated', ?, 'D', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [teamId, input.careerId, teamName, country.countryName, input.season, financeGrade, performanceGrade,
+          personality, reputation, cash, config.requiredBudget, facilityLevel, facilityLevel, facilityLevel,
+          facilityLevel, facilityLevel, facilityLevel, teamReliability],
+      );
+      createdTeamIds.push(teamId);
+
+      await database.run(
+        "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, NULL, 'opening', 'starting-cash', ?, ?);",
+        [stableId(seed, "tier6-opening-balance", suffix), teamId, input.season, grossCash, grossCash],
+      );
+      await database.run(
+        "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, NULL, 'expense', 'division-entry-fee', ?, ?);",
+        [stableId(seed, "tier6-entry-fee", suffix), teamId, input.season, -entryFee, cash],
+      );
+
+      const carBase = distribution.carReference + PERFORMANCE_GRADE_OFFSETS[performanceGrade].car;
+      await database.run(
+        `INSERT INTO cars
+          (car_id, team_id, season, engine_power, aero, high_speed, medium_speed, low_speed,
+           mechanical_grip, traction, braking, tyre_management, engine_reliability, gearbox_reliability,
+           brake_reliability, suspension_reliability, electronics_reliability, development_points)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
+        [stableId(seed, "tier6-car", suffix), teamId, input.season,
+          ...Array.from({ length: 9 }, () => clamp(carBase + sampleDelta(rng, 2), 1, 100)),
+          ...Array.from({ length: 5 }, () => clamp(distribution.reliabilityMean + PERFORMANCE_GRADE_OFFSETS[performanceGrade].reliability + sampleDelta(rng, 3), 1, 100))],
+      );
+
+      const driverIds: string[] = [];
+      for (let seat = 0; seat < 2; seat += 1) {
+        driverIds.push(await insertDriver(database, {
+          seed, index: "tier6-" + suffix + "-seat-" + seat, careerId: input.careerId, teamId, tier: 6,
+          pool, rng, baseCountry: country.countryName, existingNames, season: input.season,
+        }));
+      }
+      for (let staffIndex = 0; staffIndex < STAFF_ROLES[6].length; staffIndex += 1) {
+        const role = STAFF_ROLES[6][staffIndex]!;
+        const generated = generateName(pool, rng, { role: "staff", existingFullNames: existingNames });
+        existingNames.add(normalizeFullName(generated.fullName));
+        const age = Math.round(28 + rng.next() * 53);
+        const skill = clamp(distribution.staffSkillMean + PERFORMANCE_GRADE_OFFSETS[performanceGrade].technicalStaff + sampleDelta(rng, 8), 1, 100);
+        const staffId = stableId(seed, "tier6-staff", suffix + "-" + staffIndex);
+        await database.run(
+          "INSERT INTO staff (staff_id, career_id, team_id, role, name, nationality, name_culture, gender, age, skill, specialization, reputation, salary, potential, contract_end, is_free_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0);",
+          [staffId, input.careerId, teamId, role, generated.fullName, generated.countryCode, generated.cultureId,
+            generated.gender, age, skill, role, Math.round(skill * 100), clamp(skill + 5 + rng.next() * 15, 0, 100), input.season],
+        );
+      }
+
+      const popularityRows = await database.query(
+        "SELECT AVG(fan_popularity) AS average_popularity FROM drivers WHERE driver_id = ? OR driver_id = ?;",
+        driverIds,
+      );
+      const projections = calculateFinancialIncomeProjections({
+        activeSponsorRevenue: 0,
+        averageDriverFanPopularity: Number(popularityRows[0]?.average_popularity ?? 0),
+      });
+      const affordability = (cash + projections.byTier[6]) / config.requiredBudget;
+      await database.run(
+        "UPDATE teams SET affordability = ?, distress_seasons = ?, severe_distress_seasons = ? WHERE team_id = ?;",
+        [affordability, affordability < 1 ? 1 : 0, affordability < 0.5 ? 1 : 0, teamId],
+      );
+      await database.run(
+        `INSERT INTO team_division_history
+          (history_id, career_id, team_id, season, from_tier, to_tier, reason, affordability)
+         VALUES (?, ?, ?, ?, 6, 6, 'new_entrant', ?);`,
+        [stableId(seed, "tier6-new-entrant-history", suffix), input.careerId, teamId, input.season, affordability],
+      );
+    }
+
+    const finalCount = await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND division_id = 'T6' AND is_active = 1;", [input.careerId]);
+    if (Number(finalCount[0]?.count ?? 0) !== 12) throw new Error("Tier 6 harus memiliki tepat 12 tim aktif setelah replacement.");
+
+    await database.run(
+      "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, 'tier6-replacement', ?);",
+      [input.careerId, input.season, JSON.stringify({ createdTeamIds, slotsFilled: createdTeamIds.length })],
+    );
+  });
+
+  return { careerId: input.careerId, season: input.season, createdTeamIds, slotsFilled: createdTeamIds.length };
 }
