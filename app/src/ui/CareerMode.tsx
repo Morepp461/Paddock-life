@@ -401,9 +401,12 @@ export default function CareerMode() {
       try {
         setMarketError("");
         const season = numberField(dashboard.career, "current_season", 1);
-        const targetSeason = season + 1;
         const band = TIER_CONFIG[activeSave.tier].driverAge;
-        const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;", [String(dashboard.team.team_id), targetSeason, targetSeason]);
+        const currentSeats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age BETWEEN ? AND ?;", [String(dashboard.team.team_id), season, season, band.min, band.max]);
+        const targetSeason = numberField(currentSeats[0], "occupied_seats") < 2 ? season : season + 1;
+        const ageOffset = targetSeason - season;
+        setMarketTargetSeason(targetSeason);
+        const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;", [String(dashboard.team.team_id), targetSeason, targetSeason, ageOffset, band.min, band.max]);
         if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
           if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
           return;
@@ -420,7 +423,7 @@ export default function CareerMode() {
              )
            ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
            LIMIT 100;`,
-          [activeSave.careerId, Math.max(0, band.min - 1), band.max - 1, targetSeason, targetSeason],
+          [activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset, targetSeason, targetSeason],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
@@ -723,7 +726,7 @@ export default function CareerMode() {
         careerId: activeSave.careerId,
         teamId: String(dashboard.team.team_id),
         driverId: marketDriverId,
-        startSeason: numberField(dashboard.career, "current_season", 1) + 1,
+        startSeason: marketTargetSeason,
         durationSeasons: Number(marketDuration),
         offeredSalary: Number(marketSalary),
         signingBonus: Number(marketBonus),
