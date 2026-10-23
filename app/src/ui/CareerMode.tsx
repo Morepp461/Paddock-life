@@ -615,6 +615,7 @@ export default function CareerMode() {
           await database.run("UPDATE sponsor_offers SET status = 'declined' WHERE offer_id = ? AND status = 'offered';", [offerId]);
         }
       });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard?.career, "game_mode") === "sandbox");
       const playerTeamId = String(dashboard?.team.team_id ?? "");
       setDashboard(await loadDashboard(database, activeSave.careerId, playerTeamId, activeSave.tier));
     } catch (caught) {
@@ -627,6 +628,7 @@ export default function CareerMode() {
     setFacilityBusy(true); setFacilityError("");
     try {
       await upgradeTeamFacility(database, { teamId: String(dashboard.team.team_id), facility, season: numberField(dashboard.career, "current_season", 1) });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setFacilityError(caught instanceof Error ? caught.message : "Upgrade fasilitas gagal.");
@@ -646,6 +648,7 @@ export default function CareerMode() {
         size: developmentSize,
         worldSeed: String(dashboard.career.world_seed),
       });
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setDevelopmentError(caught instanceof Error ? caught.message : "Project development gagal dimulai.");
@@ -665,6 +668,7 @@ export default function CareerMode() {
         tier: activeSave.tier,
       });
       setDevelopmentError("Project dibatalkan. Refund: " + formatCash(refund) + ".");
+      await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
     } catch (caught) {
       setDevelopmentError(caught instanceof Error ? caught.message : "Project tidak dapat dibatalkan.");
@@ -692,6 +696,7 @@ export default function CareerMode() {
         setMarketDuration(String(result.counterOffer.durationSeasons));
       }
       if (result.decision === "accepted") {
+        await persistSnapshot(database, activeSave, "contract-signed", field(dashboard.career, "game_mode") === "sandbox");
         setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
         setMarketDrivers((rows) => rows.filter((row) => field(row, "driver_id") !== marketDriverId));
         setMarketDriverId("");
