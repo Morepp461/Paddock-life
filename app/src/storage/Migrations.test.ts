@@ -31,7 +31,16 @@ describe("local schema migrations", () => {
       "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "game_config",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }]);
+    const sourceConfigs = await database.query(
+      "SELECT config_key, value_json, source_document FROM game_config WHERE config_key IN (?, ?, ?) ORDER BY config_key;",
+      ["neutralization.safety_car_pace_multiplier", "pit.lane_speed_mps", "reliability.age_factor_cap"],
+    );
+    expect(sourceConfigs).toEqual([
+      { config_key: "neutralization.safety_car_pace_multiplier", value_json: "1.4", source_document: "02_Simulation_Rules_Addendum_v1.docx" },
+      { config_key: "pit.lane_speed_mps", value_json: "22.2", source_document: "02_Simulation_Rules_Addendum_v1.docx" },
+      { config_key: "reliability.age_factor_cap", value_json: "1.5", source_document: "02_Simulation_Rules_Addendum_v1.docx" },
+    ]);
     const gameConfigColumns = await database.query("PRAGMA table_info(game_config);");
     expect(gameConfigColumns.map((column) => column.name)).toContain("config_key");
     expect(gameConfigColumns.map((column) => column.name)).toContain("value_json");
