@@ -46,6 +46,41 @@ describe("SQLite save snapshots", () => {
     }
   });
 
+  it("rolls back the restore when snapshot rows violate foreign keys", async () => {
+    const source = await makeDatabase();
+    const target = await makeDatabase();
+    try {
+      await source.run(
+        "INSERT INTO career (career_id, career_name, current_division_tier, highest_unlocked_tier, game_mode, difficulty, world_seed) VALUES (?, ?, ?, ?, ?, ?, ?);",
+        ["valid-career", "Valid Career", 3, 3, "career", "normal", "valid-seed"],
+      );
+      const snapshot = JSON.parse(new TextDecoder().decode(await exportSqliteSnapshot(source))) as {
+        formatVersion: number;
+        tables: { name: string; rows: Record<string, unknown>[] }[];
+      };
+      const managerTable = snapshot.tables.find((table) => table.name === "career_managers");
+      if (!managerTable) throw new Error("Manager table missing from snapshot.");
+      managerTable.rows.push({
+        manager_id: "orphan-manager", career_id: "missing-career", team_id: null,
+        name: "Orphan Manager", nationality: "IDN", name_culture: "N01",
+        gender: "male", age: 30, reputation: 0, is_player: 1, status: "active",
+        confidence: 60, consecutive_primary_misses: 0,
+      });
+      await target.run(
+        "INSERT INTO career (career_id, career_name, current_division_tier, highest_unlocked_tier, game_mode, difficulty, world_seed) VALUES (?, ?, ?, ?, ?, ?, ?);",
+        ["preserve-on-rollback", "Keep This Career", 5, 3, "career", "hard", "preserve-seed"],
+      );
+
+      await expect(restoreSqliteSnapshot(target, new TextEncoder().encode(JSON.stringify(snapshot)))).rejects.toThrow("foreign key");
+      expect(await target.query("SELECT career_id, career_name FROM career;")).toEqual([
+        { career_id: "preserve-on-rollback", career_name: "Keep This Career" },
+      ]);
+    } finally {
+      await source.close();
+      await target.close();
+    }
+  });
+
   it("rejects a corrupt snapshot without changing existing career data", async () => {
     const database = await makeDatabase();
     try {
