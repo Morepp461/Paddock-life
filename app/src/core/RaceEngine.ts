@@ -15,6 +15,12 @@ export interface RaceDriverInput {
   readonly tyreManagement: number;
   readonly mechanicalGrip: number;
   readonly compound: TyreCompound;
+  /** Optional per-lap compound schedule. A compound change requires a pit stop on that lap. */
+  readonly compoundByLap?: readonly TyreCompound[];
+  /** Explicit pit-stop markers indexed by race lap; supports zero-time red-flag tyre changes. */
+  readonly pitStopByLap?: readonly boolean[];
+  /** Pit time loss in seconds per lap, supplied by source-backed pit strategy/configuration. */
+  readonly pitLossSecondsByLap?: readonly number[];
   readonly weatherAdaptation?: number;
 }
 
@@ -44,6 +50,9 @@ export interface DriverLapResult {
   readonly position: number;
   readonly gapToLeaderSeconds: number;
   readonly trackCondition: TrackCondition;
+  readonly compound: TyreCompound;
+  readonly pitStop: boolean;
+  readonly pitLossSeconds: number;
 }
 
 export interface RaceResult {
@@ -82,6 +91,22 @@ function validateInput(input: RaceInput): void {
     assertScore("TyreManagement", driver.tyreManagement);
     assertScore("MechanicalGrip", driver.mechanicalGrip);
     if (driver.weatherAdaptation !== undefined) assertScore("WeatherAdaptation", driver.weatherAdaptation);
+    for (const [label, schedule] of [
+      ["CompoundByLap", driver.compoundByLap],
+      ["PitStopByLap", driver.pitStopByLap],
+      ["PitLossSecondsByLap", driver.pitLossSecondsByLap],
+    ] as const) {
+      if (schedule && schedule.length !== input.totalLaps) {
+        throw new RangeError(label + " harus memiliki satu nilai untuk setiap lap.");
+      }
+    }
+    if (driver.pitLossSecondsByLap?.some((seconds) => !Number.isFinite(seconds) || seconds < 0)) {
+      throw new RangeError("Pit loss harus berupa waktu finite non-negatif.");
+    }
+    if (driver.pitStopByLap?.[0] || (driver.pitLossSecondsByLap?.[0] ?? 0) !== 0 ||
+        (driver.compoundByLap?.[0] !== undefined && driver.compoundByLap[0] !== driver.compound)) {
+      throw new Error("Race tidak dapat dimulai dengan pit stop atau perubahan compound pada lap pertama.");
+    }
     if (!Number.isFinite(driver.formModifier) || driver.formModifier < -2 || driver.formModifier > 2) {
       throw new RangeError("FormModifier harus berada pada rentang -2 sampai +2.");
     }
@@ -92,14 +117,15 @@ interface MutableDriverState {
   readonly input: RaceDriverInput;
   readonly baseLapSeconds: number;
   readonly performanceDeltaSeconds: number;
-  readonly wearPerLap: number;
   cumulativeTimeSeconds: number;
   tyreWearPercent: number;
+  activeCompound: TyreCompound;
 }
 
 /**
  * Deterministic lap-by-lap race kernel. Weather conditions can be supplied per lap;
- * pit strategy, incidents, overtaking, and reliability remain separate systems.
+ * Per-lap tyre compounds and pit losses are accepted from the strategy/configuration layer;
+ * incidents, overtaking, and reliability remain separate systems.
  */
 export function simulateRace(input: RaceInput): RaceResult {
   validateInput(input);
@@ -124,17 +150,9 @@ export function simulateRace(input: RaceInput): RaceResult {
       performanceDeltaSeconds: calculatePerformanceDeltaSeconds(input.estimatedCircuitLapSeconds,
         { carScore: driver.carScore, driverScore: driver.driverScore, setupScore: driver.setupScore },
         { carScore: tierConfig.referenceCarScore, driverScore: tierConfig.referenceDriverOverall, setupScore: input.referenceSetupScore }),
-      wearPerLap: calculateWearPerLap({
-        compound: driver.compound,
-        trackAbrasion: input.trackAbrasion,
-        driverAggression: driver.aggression,
-        trackTemperatureCelsius: input.trackTemperatureCelsius,
-        mechanicalGrip: driver.mechanicalGrip,
-        driverTyreManagement: driver.tyreManagement,
-        tierWearMultiplier: tierConfig.tyreWearMultiplier,
-      }),
       cumulativeTimeSeconds: 0,
       tyreWearPercent: 0,
+      activeCompound: driver.compound,
     };
   });
 
