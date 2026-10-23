@@ -1,5 +1,5 @@
 import type { IDatabase } from "../storage/IDatabase";
-import type { TierId } from "./GameConfig";
+import { TIER_CONFIG, type TierId } from "./GameConfig";
 
 type Row = Readonly<Record<string, unknown>>;
 export interface DivisionPromotionOffer {
@@ -202,8 +202,8 @@ export async function resolveDivisionPromotionChoice(
       throw new Error("Tim penukar tidak lagi menempati divisi target; keputusan promosi dihentikan agar jumlah tim tidak rusak.");
     }
     exchangedTeamId = String(bottom.team_id);
-    await database.run("UPDATE teams SET division_id = ? WHERE team_id = ?;", ["T" + currentTier, exchangedTeamId]);
-    await database.run("UPDATE teams SET division_id = ? WHERE team_id = ?;", ["T" + targetTier, teamId]);
+    await database.run("UPDATE teams SET division_id = ?, budget = ? WHERE team_id = ?;", ["T" + currentTier, TIER_CONFIG[currentTier].requiredBudget, exchangedTeamId]);
+    await database.run("UPDATE teams SET division_id = ?, budget = ? WHERE team_id = ?;", ["T" + targetTier, TIER_CONFIG[targetTier].requiredBudget, teamId]);
     await database.run("UPDATE career SET current_division_tier = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [targetTier, input.careerId]);
     await database.run(
       "INSERT INTO team_division_history (history_id, career_id, team_id, season, from_tier, to_tier, reason, affordability) VALUES (?, ?, ?, ?, ?, ?, 'player_move', ?);",
