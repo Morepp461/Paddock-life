@@ -698,10 +698,14 @@ export async function generateSeasonFreeAgentDriver(
     [input.careerId, input.careerId, input.careerId],
   );
   const existingNames = new Set(peopleRows.map((row) => normalizeFullName(String(row.name))));
+  const index = "season-free-agent-" + input.season + "-" + input.tier + "-" + input.slot;
+  const expectedDriverId = stableId(seed, "driver", index);
+  const alreadyGenerated = await database.query("SELECT driver_id FROM drivers WHERE driver_id = ? AND career_id = ?;", [expectedDriverId, input.careerId]);
+  if (alreadyGenerated[0]) return expectedDriverId;
   const rng = new SeededRandom(hashSeed([seed, "season-free-agent", input.season, input.tier, input.slot]));
   const driverId = await insertDriver(database, {
     seed,
-    index: "season-free-agent-" + input.season + "-" + input.tier + "-" + input.slot,
+    index,
     careerId: input.careerId,
     teamId: null,
     tier: input.tier,
