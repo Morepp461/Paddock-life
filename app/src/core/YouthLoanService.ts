@@ -48,7 +48,7 @@ export async function createYouthDriverLoan(
       throw new Error("Youth Loan satu season penuh hanya bisa dimulai sebelum race pertama season tersebut.");
     }
 
-    const [ownerRows, borrowerRows, driverRows, contractRows, activeLoans, seatRows] = await Promise.all([
+    const [ownerRows, borrowerRows, driverRows, contractRows, activeLoans] = await Promise.all([
       database.query("SELECT team_id, division_id, academy_level, is_active FROM teams WHERE team_id = ? AND career_id = ?;", [input.ownerTeamId, input.careerId]),
       database.query("SELECT team_id, division_id, is_active FROM teams WHERE team_id = ? AND career_id = ?;", [input.loanTeamId, input.careerId]),
       database.query("SELECT driver_id, age, is_retired, loaned_to_team_id FROM drivers WHERE driver_id = ? AND career_id = ?;", [input.driverId, input.careerId]),
@@ -59,19 +59,6 @@ export async function createYouthDriverLoan(
       database.query(
         "SELECT loan_id FROM driver_loans WHERE career_id = ? AND driver_id = ? AND status = 'active' AND start_season <= ? AND end_season >= ?;",
         [input.careerId, input.driverId, input.season, input.season],
-      ),
-      database.query(
-        `SELECT COUNT(DISTINCT d.driver_id) AS occupied_seats
-         FROM drivers d
-         LEFT JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-         LEFT JOIN driver_loans l ON l.driver_id = d.driver_id AND l.career_id = d.career_id AND l.loan_team_id = ? AND l.status = 'active' AND l.start_season <= ? AND l.end_season >= ?
-         WHERE d.career_id = ? AND d.is_retired = 0
-           AND ((dc.team_id = ? AND d.is_academy_driver = 0) OR l.loan_id IS NOT NULL)
-           AND d.age BETWEEN ? AND ?;`,
-        [input.season, input.season, input.loanTeamId, input.season, input.season, input.careerId,
-          input.loanTeamId,
-          TIER_CONFIG[Number(String((await database.query("SELECT division_id FROM teams WHERE team_id = ?;", [input.loanTeamId]))[0]?.division_id ?? "T1").replace("T", "")) as TierId].driverAge.min,
-          TIER_CONFIG[Number(String((await database.query("SELECT division_id FROM teams WHERE team_id = ?;", [input.loanTeamId]))[0]?.division_id ?? "T1").replace("T", "")) as TierId].driverAge.max],
       ),
     ]);
     const owner = ownerRows[0], borrower = borrowerRows[0], driver = driverRows[0];
@@ -87,6 +74,17 @@ export async function createYouthDriverLoan(
     const age = n(driver, "age");
     const ageBand = TIER_CONFIG[tier].driverAge;
     if (age < ageBand.min || age > ageBand.max) throw new Error("Umur driver di luar rentang tier tim peminjam.");
+    const seatRows = await database.query(
+      `SELECT COUNT(DISTINCT d.driver_id) AS occupied_seats
+       FROM drivers d
+       LEFT JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+       LEFT JOIN driver_loans l ON l.driver_id = d.driver_id AND l.career_id = d.career_id AND l.loan_team_id = ? AND l.status = 'active' AND l.start_season <= ? AND l.end_season >= ?
+       WHERE d.career_id = ? AND d.is_retired = 0
+         AND ((dc.team_id = ? AND d.is_academy_driver = 0) OR l.loan_id IS NOT NULL)
+         AND d.age BETWEEN ? AND ?;`,
+      [input.season, input.season, input.loanTeamId, input.season, input.season, input.careerId,
+        input.loanTeamId, ageBand.min, ageBand.max],
+    );
     const slots = academyLoanSlots(n(owner, "academy_level", 1));
     const ownerLoans = await database.query(
       "SELECT COUNT(*) AS count FROM driver_loans WHERE career_id = ? AND owner_team_id = ? AND start_season = ? AND status = 'active';",
