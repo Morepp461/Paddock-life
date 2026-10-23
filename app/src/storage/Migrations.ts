@@ -538,6 +538,25 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_world_transition_steps_season ON world_transition_steps(career_id, season, completed_at);
     `,
   },
+  {
+    version: 12,
+    description: "persist expected board rank and manager job offers",
+    sql: `
+      ALTER TABLE board_objectives ADD COLUMN expected_rank INTEGER NOT NULL DEFAULT 6 CHECK (expected_rank BETWEEN 1 AND 12);
+      CREATE TABLE manager_job_offers (
+        offer_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        manager_id TEXT NOT NULL REFERENCES career_managers(manager_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        offered_season INTEGER NOT NULL CHECK (offered_season >= 1),
+        reason TEXT NOT NULL CHECK (reason IN ('dismissal', 'reputation')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'expired')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (manager_id, team_id, offered_season)
+      );
+      CREATE INDEX idx_manager_job_offers_pending ON manager_job_offers(career_id, manager_id, status, offered_season);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
