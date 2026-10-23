@@ -100,6 +100,43 @@ describe("career contract service", () => {
     }
   });
 
+  it("allows a returning driver's renewal at negative cash but still blocks new recruitment", async () => {
+    const { database, career, teamId } = await setup();
+    try {
+      const returning = (await database.query(
+        "SELECT d.driver_id, d.market_value, d.ambition FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = ? AND dc.end_season = 1 AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.market_value > 0 AND d.age + 1 BETWEEN ? AND ? ORDER BY d.driver_id LIMIT 1;",
+        [teamId, TIER_CONFIG[3].driverAge.min, TIER_CONFIG[3].driverAge.max],
+      ))[0];
+      expect(returning).toBeDefined();
+      await database.run("UPDATE teams SET cash = -1 WHERE team_id = ?;", [teamId]);
+      const driverId = String(returning!.driver_id);
+      const askingSalary = calculateDriverAskingSalary({
+        marketValue: Number(returning!.market_value),
+        ambition: Number(returning!.ambition),
+        demandFactor: generateDriverDemandFactor({ worldSeed: "contract-service-test", season: 2, driverId }),
+      });
+      const renewed = await offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId,
+        startSeason: 2, durationSeasons: 2, offeredSalary: Math.ceil(askingSalary * 1.2),
+        championshipBonus: Math.ceil(askingSalary), role: "lead",
+      });
+      expect(renewed.decision).toBe("accepted");
+
+      const newDriver = (await database.query(
+        "SELECT d.driver_id FROM drivers d WHERE d.career_id = ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.market_value > 0 AND d.age + 1 BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM driver_contracts dc WHERE dc.driver_id = d.driver_id AND dc.start_season <= 2 AND dc.end_season >= 2) ORDER BY d.driver_id LIMIT 1;",
+        [career.careerId, TIER_CONFIG[3].driverAge.min, TIER_CONFIG[3].driverAge.max],
+      ))[0];
+      if (newDriver) {
+        await expect(offerDriverContract(database, {
+          careerId: career.careerId, teamId, driverId: String(newDriver.driver_id),
+          startSeason: 2, durationSeasons: 2, offeredSalary: 100_000, role: "second",
+        })).rejects.toThrow("saldo kas negatif");
+      }
+    } finally {
+      await database.close();
+    }
+  });
+
   it("records rejection reasons and blocks same-score re-negotiation for one race", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
