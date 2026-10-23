@@ -25,6 +25,16 @@ function drivers(count: number, compound: RaceWeekendDriver["compound"] = "mediu
 }
 
 describe("race weekend orchestration", () => {
+  it("runs a weekend without a fabricated track temperature", () => {
+    const { trackTemperatureCelsius: _temperature, ...input } = {
+      worldSeed: "temperature-gap-test", season: 1, round: 1, tier: 1 as const,
+      estimatedCircuitLapSeconds: 90, totalLaps: 8, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry" as const,
+      referenceSetupScore: 50, hasSprint: false, drivers: drivers(24),
+    };
+    expect(() => simulateRaceWeekend(input)).not.toThrow();
+  });
+
   it("uses the source-defined starts attribute to adjust the qualifying grid by up to three places", () => {
     const roster = drivers(24).map((driver, index) => ({ ...driver, starts: index === 23 ? 100 : 0 }));
     const result = simulateRaceWeekend({

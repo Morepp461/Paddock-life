@@ -46,6 +46,11 @@ describe("seeded random helpers", () => {
 });
 
 describe("deterministic race kernel", () => {
+  it("supports races without an unsupported circuit-temperature placeholder", () => {
+    const { trackTemperatureCelsius: _temperature, ...withoutTemperature } = raceInput;
+    expect(() => simulateRace(withoutTemperature)).not.toThrow();
+  });
+
   it("produces identical results for the same world, session, and driver inputs", () => {
     expect(simulateRace(raceInput)).toEqual(simulateRace(raceInput));
   });
