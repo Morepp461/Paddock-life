@@ -72,7 +72,14 @@ async function contractContext(database: IDatabase, input: DriverContractOfferIn
   const career = careerRows[0], team = teamRows[0], driver = driverRows[0];
   if (!career || !team || !driver) throw new Error("Career, tim, atau driver untuk penawaran kontrak tidak ditemukan.");
   if (n(team, "is_active") !== 1) throw new Error("Tim tidak aktif dan tidak dapat merekrut driver.");
-  if (n(team, "cash") < 0) throw new Error("Tim tidak dapat merekrut saat saldo kas negatif.");
+  const previousTeamContracts = await database.query(
+    "SELECT contract_id FROM driver_contracts WHERE driver_id = ? AND team_id = ? AND start_season <= ? AND end_season = ?;",
+    [input.driverId, input.teamId, input.startSeason - 1, input.startSeason - 1],
+  );
+  const isRenewal = previousTeamContracts.length > 0;
+  if (n(team, "cash") < 0 && !isRenewal) {
+    throw new Error("Tim tidak dapat merekrut saat saldo kas negatif; perpanjangan driver yang sudah membela tim tetap dapat dinegosiasikan.");
+  }
   if (n(driver, "is_retired") === 1) throw new Error("Driver sudah pensiun.");
   const tier = Number(String(team.division_id).replace("T", "")) as TierId;
   const ageAtStart = n(driver, "age") + Math.max(0, input.startSeason - n(career, "current_season"));
