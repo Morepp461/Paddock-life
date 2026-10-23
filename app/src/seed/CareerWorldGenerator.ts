@@ -686,7 +686,7 @@ export async function generateTier6RookieDrivers(
  */
 export async function generateSeasonFreeAgentDriver(
   database: IDatabase,
-  input: { readonly careerId: string; readonly tier: Exclude<TierId, 6>; readonly season: number; readonly slot: string },
+  input: { readonly careerId: string; readonly tier: Exclude<TierId, 6>; readonly season: number; readonly slot: string; readonly storePreviousSeasonAge?: boolean },
 ): Promise<string> {
   if (!input.careerId.trim() || !Number.isSafeInteger(input.season) || input.season < 2 ||
       !input.slot.trim() || input.slot.length > 256) {
@@ -718,6 +718,8 @@ export async function generateSeasonFreeAgentDriver(
     existingNames,
     season: input.season,
   });
-  await database.run("UPDATE drivers SET age = age - 1 WHERE driver_id = ? AND career_id = ?;", [driverId, input.careerId]);
+  if (input.storePreviousSeasonAge !== false) {
+    await database.run("UPDATE drivers SET age = age - 1 WHERE driver_id = ? AND career_id = ?;", [driverId, input.careerId]);
+  }
   return driverId;
 }
