@@ -212,7 +212,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
   const raceDrivers = await database.query(
     `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.aggression,
-      t.team_id, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
+      t.team_id, t.is_player_team, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
      FROM drivers d
      JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
      JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
@@ -231,7 +231,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     qualifyingScore: numberField(driver, "qualifying"),
     setupScore: 50, formModifier: 0, aggression: numberField(driver, "aggression"),
     tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
-    compound, weatherAdaptation: numberField(driver, "wet_skill"),
+    compound: numberField(driver, "is_player_team") === 1 ? compound : TIER_CONFIG[tier].allowedDryCompounds[0]!, weatherAdaptation: numberField(driver, "wet_skill"),
   }));
   const weekend = simulateRaceWeekend({
     worldSeed: seed, season, round: Number(race.round), tier,
@@ -242,6 +242,10 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     drivers: driverInputs,
   });
   const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));
+  const compoundByDriver = new Map(raceDrivers.map((driver) => [
+    String(driver.driver_id),
+    numberField(driver, "is_player_team") === 1 ? compound : TIER_CONFIG[tier].allowedDryCompounds[0]!,
+  ]));
   const gridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
   const raceLaps = weekend.race.laps.flat();
   const fastestRaceTime = Math.min(...raceLaps.map((lap) => lap.lapTimeSeconds));
@@ -261,7 +265,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         await database.run(
           "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
           [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
-            weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compound, points, row.cumulativeTimeSeconds],
+            weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compoundByDriver.get(row.driverId) ?? TIER_CONFIG[tier].allowedDryCompounds[0]!, points, row.cumulativeTimeSeconds],
         );
         await upsertDriverStanding(database, tier, season, String(race.race_id) + "_sprint", row.driverId, points);
       }
