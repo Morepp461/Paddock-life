@@ -206,14 +206,14 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   const season = numberField(careerState, "current_season", 1);
   const playerTier = numberField(careerState, "current_division_tier", tier);
   const raceRows = await database.query(
-    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
+    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion, c.overtaking_difficulty, c.drs_zones FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
     ["T" + tier, season],
   );
   const race = raceRows[0];
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
   const raceDrivers = await database.query(
     `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.tyre_management, d.aggression,
-      t.team_id, t.is_player_team, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
+      d.overtaking, d.defending, d.starts, t.team_id, t.is_player_team, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
      FROM drivers d
      JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
      JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
@@ -230,6 +230,8 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     carScore: ["engine_power", "aero", "high_speed", "medium_speed", "low_speed", "mechanical_grip", "traction", "braking", "car_tyre_management"].reduce((sum, key) => sum + numberField(driver, key), 0) / 9,
     driverScore: (numberField(driver, "pace") + numberField(driver, "qualifying") + numberField(driver, "racecraft") + numberField(driver, "consistency")) / 4,
     qualifyingScore: numberField(driver, "qualifying"),
+    racecraft: numberField(driver, "racecraft"), starts: numberField(driver, "starts"),
+    overtakingSkill: numberField(driver, "overtaking"), defendingSkill: numberField(driver, "defending"),
     setupScore: 50, formModifier: 0, aggression: numberField(driver, "aggression"),
     tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
     compound: numberField(driver, "is_player_team") === 1 ? compound : TIER_CONFIG[tier].allowedDryCompounds[0]!, weatherAdaptation: numberField(driver, "wet_skill"),

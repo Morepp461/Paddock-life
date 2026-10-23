@@ -4,9 +4,15 @@ import { SeededRandom } from "./SeededRandom";
 import { classifyQualifying, type QualifyingResult, type QualifyingSessionTimes } from "./QualifyingEngine";
 import { simulateRace, type RaceDriverInput, type RaceInput, type RaceResult } from "./RaceEngine";
 import { advanceWeather, createWeatherRandom, type WeatherState, type WeatherTransitionMatrix } from "./WeatherEngine";
+import { resolveOvertaking, type DefensiveMode } from "./OvertakingEngine";
 
 export interface RaceWeekendDriver extends RaceDriverInput {
   readonly qualifyingScore: number;
+  readonly starts?: number;
+  readonly racecraft?: number;
+  readonly overtakingSkill?: number;
+  readonly defendingSkill?: number;
+  readonly defensiveMode?: DefensiveMode;
 }
 
 export interface RaceWeekendInput {
@@ -23,6 +29,10 @@ export interface RaceWeekendInput {
   readonly hasSprint: boolean;
   /** Optional source-configured Markov matrix. Omit to preserve fixed-condition sessions. */
   readonly weatherTransitionMatrix?: WeatherTransitionMatrix;
+  /** Circuit difficulty is sourced from Pool_Sirkuit, on a 1–10 scale. */
+  readonly overtakingDifficulty?: number;
+  /** Per-lap DRS availability; omit when zone-level activation data is unavailable. */
+  readonly drsZoneActiveByLap?: readonly boolean[];
   readonly drivers: readonly RaceWeekendDriver[];
 }
 
@@ -62,6 +72,109 @@ function createWeatherSchedule(
   return schedule;
 }
 
+/** Applies the documented starts-skill delta to qualifying grid positions. */
+export function calculateStartingGrid(input: {
+  readonly worldSeed: string | number;
+  readonly season: number;
+  readonly round: number;
+  readonly session: "sprint" | "race";
+  readonly qualifying: QualifyingResult;
+  readonly drivers: readonly RaceWeekendDriver[];
+}): readonly string[] {
+  const startsByDriver = new Map(input.drivers.map((driver) => {
+    const starts = driver.starts ?? 50;
+    if (!Number.isFinite(starts) || starts < 0 || starts > 100) {
+      throw new RangeError("Starts harus berada pada rentang 0–100.");
+    }
+    return [driver.id, starts] as const;
+  }));
+  const gridByDriver = new Map(input.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
+  if (gridByDriver.size !== input.drivers.length || input.drivers.some((driver) => !gridByDriver.has(driver.id))) {
+    throw new Error("Starting grid harus memiliki seluruh driver yang mengikuti race.");
+  }
+  const ordered = input.drivers.map((driver) => {
+    const ownStarts = startsByDriver.get(driver.id)!;
+    const opponentValues = input.drivers.filter((opponent) => opponent.id !== driver.id).map((opponent) => startsByDriver.get(opponent.id)!);
+    const averageOpponentStarts = opponentValues.reduce((sum, value) => sum + value, 0) / opponentValues.length;
+    const random = new SeededRandom(hashSeed([input.worldSeed, input.season, input.round, input.session, "start", driver.id]));
+    const jitter = Math.floor(random.next() * 3) - 1;
+    const delta = Math.max(-3, Math.min(3, Math.round((ownStarts - averageOpponentStarts) / 10 + jitter)));
+    return {
+      driverId: driver.id,
+      gridPosition: gridByDriver.get(driver.id)!,
+      startPosition: Math.max(1, Math.min(input.drivers.length, gridByDriver.get(driver.id)! - delta)),
+    };
+  });
+  ordered.sort((left, right) => left.startPosition - right.startPosition
+    || left.gridPosition - right.gridPosition || left.driverId.localeCompare(right.driverId));
+  return ordered.map((entry) => entry.driverId);
+}
+
+function applyGridAndOvertaking(
+  result: RaceResult,
+  input: RaceWeekendInput,
+  startingOrder: readonly string[],
+  sessionSeed: string | number,
+): RaceResult {
+  const driverById = new Map(input.drivers.map((driver) => [driver.id, driver]));
+  const laps: (typeof result.laps[number])[] = [];
+  for (let lapIndex = 0; lapIndex < result.laps.length; lapIndex += 1) {
+    const rawLap = result.laps[lapIndex]!;
+    const rowById = new Map(rawLap.map((row) => [row.driverId, row]));
+    const order = lapIndex === 0
+      ? startingOrder.slice()
+      : laps[lapIndex - 1]!.map((row) => row.driverId);
+    if (input.overtakingDifficulty !== undefined) {
+      for (let index = 1; index < order.length; index += 1) {
+        let attackerPosition = index;
+        while (attackerPosition > 0) {
+          const attackerId = order[attackerPosition]!;
+          const defenderId = order[attackerPosition - 1]!;
+          const attacker = driverById.get(attackerId)!;
+          const defender = driverById.get(defenderId)!;
+          if (attacker.overtakingSkill === undefined || defender.defendingSkill === undefined) break;
+          const attackerLap = rowById.get(attackerId)!;
+          const defenderLap = rowById.get(defenderId)!;
+          const gapSeconds = Math.max(0, attackerLap.cumulativeTimeSeconds - defenderLap.cumulativeTimeSeconds);
+          const outcome = resolveOvertaking({
+            seed: sessionSeed,
+            season: input.season,
+            round: input.round,
+            lap: lapIndex + 1,
+            attackerId,
+            defenderId,
+            overtake: {
+              attackerRacecraft: attacker.racecraft ?? attacker.driverScore,
+              attackerPaceAdvantageSeconds: defenderLap.lapTimeSeconds - attackerLap.lapTimeSeconds,
+              attackerTyreWearPercent: attackerLap.tyreWearPercent,
+              defenderTyreWearPercent: defenderLap.tyreWearPercent,
+              gapSeconds,
+              drsZoneActive: input.drsZoneActiveByLap?.[lapIndex] ?? false,
+              tier: input.tier,
+              trackOvertakingDifficulty: input.overtakingDifficulty,
+              defenderSkill: defender.defendingSkill,
+              defensiveMode: defender.defensiveMode ?? "normal",
+            },
+          });
+          if (!outcome.successful) break;
+          [order[attackerPosition - 1], order[attackerPosition]] = [order[attackerPosition]!, order[attackerPosition - 1]!];
+          attackerPosition -= 1;
+        }
+      }
+    }
+    const leader = rowById.get(order[0]!)!;
+    laps.push(order.map((driverId, positionIndex) => {
+      const row = rowById.get(driverId)!;
+      return {
+        ...row,
+        position: positionIndex + 1,
+        gapToLeaderSeconds: Math.max(0, row.cumulativeTimeSeconds - leader.cumulativeTimeSeconds),
+      };
+    }));
+  }
+  return { ...result, laps, classification: laps[laps.length - 1]! };
+}
+
 function makeQualifyingSession(input: RaceWeekendInput, sessionIndex: number): QualifyingSessionTimes {
   const config = TIER_CONFIG[input.tier];
   const base = calculateBaseLapSeconds(input.estimatedCircuitLapSeconds, input.tier);
@@ -88,6 +201,13 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
     throw new RangeError("Season dan round harus integer positif.");
   }
   if (!Number.isSafeInteger(input.totalLaps) || input.totalLaps < 8) throw new RangeError("Race harus memiliki minimal 8 lap.");
+  if (input.overtakingDifficulty !== undefined &&
+      (!Number.isSafeInteger(input.overtakingDifficulty) || input.overtakingDifficulty < 1 || input.overtakingDifficulty > 10)) {
+    throw new RangeError("Overtaking difficulty harus integer 1–10.");
+  }
+  if (input.drsZoneActiveByLap && input.drsZoneActiveByLap.length !== input.totalLaps) {
+    throw new RangeError("DRS activation schedule harus memiliki satu nilai per lap.");
+  }
   const drivers = input.drivers.map(({ qualifyingScore: _qualifyingScore, ...driver }) => driver);
   const qualifying = classifyQualifying({
     tier: input.tier,
@@ -109,16 +229,26 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
   };
   const sprintLaps = input.hasSprint ? Math.max(8, Math.round(input.totalLaps * 0.3)) : null;
   const sprintSeed = String(input.worldSeed) + ":sprint";
-  const sprint = sprintLaps === null ? null : simulateRace({
+  const sprintGrid = calculateStartingGrid({
+    worldSeed: input.worldSeed, season: input.season, round: input.round,
+    session: "sprint", qualifying, drivers: input.drivers,
+  });
+  const raceGrid = calculateStartingGrid({
+    worldSeed: input.worldSeed, season: input.season, round: input.round,
+    session: "race", qualifying, drivers: input.drivers,
+  });
+  const rawSprint = sprintLaps === null ? null : simulateRace({
     ...raceInput,
     worldSeed: sprintSeed,
     totalLaps: sprintLaps,
     weatherByLap: createWeatherSchedule(input, sprintSeed, sprintLaps),
   });
-  const race = simulateRace({
+  const sprint = rawSprint === null ? null : applyGridAndOvertaking(rawSprint, input, sprintGrid, sprintSeed);
+  const rawRace = simulateRace({
     ...raceInput,
     weatherByLap: createWeatherSchedule(input, input.worldSeed, input.totalLaps),
   });
+  const race = applyGridAndOvertaking(rawRace, input, raceGrid, input.worldSeed);
   const raceLapRows = race.laps.flat();
   const fastestLapSeconds = Math.min(...raceLapRows.map((lap) => lap.lapTimeSeconds));
   const fastestLapDriverIds = [...new Set(raceLapRows.filter((lap) => lap.lapTimeSeconds === fastestLapSeconds).map((lap) => lap.driverId))].sort();
