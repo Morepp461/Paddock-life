@@ -35,7 +35,7 @@ type Catalog = { teams: CatalogTeam[]; countries: NamePoolPayload["countries"]; 
 type SaveSlot = { dbName: string; careerId: string; managerName: string; teamName: string; tier: TierId; savedAt: string };
 type Row = Readonly<Record<string, unknown>>;
 type DashboardData = {
-  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[];
+  career: Row; team: Row; teams: Row[]; roster: Row[]; races: Row[]; sponsors: Row[]; staff: Row[]; finance: Row[]; standings: Row[]; settlements: Row[]; car: Row | null; developmentProjects: Row[]; developmentHistory: Row[]; pendingWorldRaces: number; unsettledWorldDivisions: number;
 };
 type Tab = "overview" | "calendar" | "roster" | "staff" | "development" | "sponsors" | "finance" | "standings";
 
