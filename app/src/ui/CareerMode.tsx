@@ -272,14 +272,14 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     worldSeed: seed, season, round: Number(race.round), tier,
     estimatedCircuitLapSeconds: Number(race.estimated_lap_seconds), totalLaps: Number(race.laps),
     trackAbrasion: Number(race.abrasion), trackTemperatureCelsius: 25,
-    trackCondition: "dry", referenceSetupScore: 50,
+    trackCondition, referenceSetupScore: 50,
     hasSprint: Number(race.has_sprint) === 1,
     drivers: driverInputs,
   });
   const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));
   const compoundByDriver = new Map(raceDrivers.map((driver) => [
     String(driver.driver_id),
-    numberField(driver, "is_player_team") === 1 ? compound : TIER_CONFIG[tier].allowedDryCompounds[0]!,
+    numberField(driver, "is_player_team") === 1 ? compound : aiCompound,
   ]));
   const gridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
   const raceLaps = weekend.race.laps.flat();
