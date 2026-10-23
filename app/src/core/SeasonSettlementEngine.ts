@@ -66,6 +66,40 @@ function sponsorPerformanceFromRows(input: {
   };
 }
 
+async function loadExistingSettlement(
+  database: IDatabase,
+  careerId: string,
+  season: number,
+  tier: TierId,
+): Promise<SeasonSettlementResult> {
+  const rows = await database.query(
+    "SELECT team_id, prize_money, commercial_revenue, sponsor_revenue, interest_cost, facility_maintenance, net_amount, closing_cash, settlement_json FROM season_settlements WHERE career_id = ? AND season = ? AND division_id = ?;",
+    [careerId, season, "T" + tier],
+  );
+  if (rows.length !== 12) throw new Error("Settlement tersimpan tidak lengkap; pemulihan data diperlukan.");
+  const settlements = rows.map((row): TeamSeasonSettlement => {
+    let metadata: { constructorPosition?: unknown; sponsorTargets?: unknown };
+    try { metadata = JSON.parse(String(row.settlement_json)) as typeof metadata; }
+    catch { throw new Error("Metadata settlement tersimpan rusak."); }
+    if (!Number.isSafeInteger(Number(metadata.constructorPosition)) || !Array.isArray(metadata.sponsorTargets)) {
+      throw new Error("Metadata settlement tersimpan tidak valid.");
+    }
+    return {
+      teamId: String(row.team_id),
+      constructorPosition: Number(metadata.constructorPosition),
+      prizeMoney: numberValue(row, "prize_money"),
+      commercialRevenue: numberValue(row, "commercial_revenue"),
+      sponsorRevenue: numberValue(row, "sponsor_revenue"),
+      interestCost: numberValue(row, "interest_cost"),
+      facilityMaintenance: numberValue(row, "facility_maintenance"),
+      netAmount: numberValue(row, "net_amount"),
+      closingCash: numberValue(row, "closing_cash"),
+      sponsorTargets: metadata.sponsorTargets as SponsorTargetRecord[],
+    };
+  }).sort((left, right) => left.constructorPosition - right.constructorPosition);
+  return { careerId, season, tier, teamsSettled: settlements.length, settlements };
+}
+
 /**
  * Closes one completed season's finances exactly once. Sponsor revenue is paid
  * only when the contract's source-defined target is achieved; settlement values
@@ -84,7 +118,7 @@ export async function settleCareerSeason(
       "SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed FROM races WHERE division_id = ? AND season = ?;",
       [divisionId, input.season],
     ),
-    database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = ?;", [input.careerId, input.season]),
+    database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = ? AND division_id = ?;", [input.careerId, input.season, divisionId]),
   ]);
   const totalRounds = Number(raceCounts[0]?.total ?? 0);
   const completedRounds = Number(raceCounts[0]?.completed ?? 0);
@@ -92,7 +126,7 @@ export async function settleCareerSeason(
     throw new Error("Season belum bisa ditutup: semua ronde harus selesai terlebih dahulu.");
   }
   if (Number(priorSettlement[0]?.count ?? 0) > 0) {
-    throw new Error("Season ini sudah diselesaikan; settlement tidak boleh dijalankan dua kali.");
+    return loadExistingSettlement(database, input.careerId, input.season, input.tier);
   }
 
   const teamRows = await database.query(
