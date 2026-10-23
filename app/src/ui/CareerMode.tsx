@@ -525,6 +525,12 @@ export default function CareerMode() {
       const nextSlots = readSaveSlots().filter((item) => item.dbName !== slot.dbName);
       writeSaveSlots(nextSlots);
       setSaveSlots(nextSlots);
+      if (saveManager) {
+        try { await saveManager.deleteSlot(slot.dbName); }
+        catch (caught) {
+          setError("Career berhasil dihapus, tetapi sebagian backup belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui"));
+        }
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Save gagal dihapus; data tidak dihapus dari daftar.");
     }
