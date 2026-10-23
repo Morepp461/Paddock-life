@@ -105,7 +105,30 @@ export async function prepareDivisionPromotionOffer(
     highestUnlockedTier = currentTier - 1;
     unlockAwarded = true;
   }
-  if (currentTier <= highestUnlockedTier) return null;
+  if (currentTier <= highestUnlockedTier) {
+    if (unlockAwarded) {
+      await database.run("UPDATE career SET highest_unlocked_tier = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [highestUnlockedTier, input.careerId]);
+    }
+    return null;
+  }
+
+  // Only exchange with a team that belonged to this target division in the completed season
+  // and still occupies a slot there after the source-defined financial movement.
+  const targetTeamRows = await database.query(
+    `SELECT t.team_id
+     FROM teams t
+     JOIN standings s ON s.team_id = t.team_id AND s.season = ? AND s.division_id = ? AND s.driver_id IS NULL
+     WHERE t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND t.is_player_team = 0
+     ORDER BY s.points ASC, s.wins ASC, t.team_id DESC LIMIT 1;`,
+    [input.completedSeason, "T" + (currentTier - 1), input.careerId, "T" + (currentTier - 1)],
+  );
+  const targetTeamId = targetTeamRows[0] ? String(targetTeamRows[0].team_id) : null;
+  if (!targetTeamId) {
+    if (unlockAwarded) {
+      await database.run("UPDATE career SET highest_unlocked_tier = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [highestUnlockedTier, input.careerId]);
+    }
+    return null;
+  }
 
   const offerId = stableId(input.careerId, teamId, input.completedSeason);
   await database.transaction(async () => {
@@ -114,9 +137,9 @@ export async function prepareDivisionPromotionOffer(
     }
     await database.run(
       `INSERT INTO division_promotion_offers
-        (offer_id, career_id, team_id, season, current_tier, target_tier, unlock_awarded, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending');`,
-      [offerId, input.careerId, teamId, input.completedSeason, currentTier, currentTier - 1, unlockAwarded ? 1 : 0],
+        (offer_id, career_id, team_id, target_team_id, season, current_tier, target_tier, unlock_awarded, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending');`,
+      [offerId, input.careerId, teamId, targetTeamId, input.completedSeason, currentTier, currentTier - 1, unlockAwarded ? 1 : 0],
     );
   });
   return readOffer(database, offerId);
