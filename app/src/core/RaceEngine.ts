@@ -142,6 +142,10 @@ export function simulateRace(input: RaceInput): RaceResult {
     if (!allowedCompounds.includes(driver.compound)) {
       throw new Error(`Compound ${driver.compound} tidak tersedia untuk Tier ${input.tier}.`);
     }
+    const unavailableScheduledCompound = driver.compoundByLap?.find((compound) => !allowedCompounds.includes(compound));
+    if (unavailableScheduledCompound) {
+      throw new Error(`Compound ${unavailableScheduledCompound} dalam strategi tidak tersedia untuk Tier ${input.tier}.`);
+    }
     const initialCondition = input.weatherByLap?.[0] ?? input.trackCondition;
     const compoundResult = getCompoundPaceResult({ compound: driver.compound, trackCondition: initialCondition });
     if (!compoundResult.usable) {
