@@ -235,10 +235,10 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
   };
   const sprintLaps = input.hasSprint ? Math.max(8, Math.round(input.totalLaps * 0.3)) : null;
   const sprintSeed = String(input.worldSeed) + ":sprint";
-  const sprintGrid = calculateStartingGrid({
-    worldSeed: input.worldSeed, season: input.season, round: input.round,
-    session: "sprint", qualifying, drivers: input.drivers,
-  });
+  // Division Ruleset §3: sprint starts directly from qualifying classification.
+  const sprintGrid = [...qualifying.classification]
+    .sort((left, right) => left.gridPosition - right.gridPosition)
+    .map((row) => row.driverId);
   const raceGrid = calculateStartingGrid({
     worldSeed: input.worldSeed, season: input.season, round: input.round,
     session: "race", qualifying, drivers: input.drivers,
