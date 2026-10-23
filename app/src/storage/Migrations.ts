@@ -580,6 +580,28 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         ON board_objective_warnings(career_id, team_id, season, at_risk);
     `,
   },
+  {
+    version: 14,
+    description: "persist player division unlock and promotion choices",
+    sql: `
+      CREATE TABLE division_promotion_offers (
+        offer_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        target_team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        current_tier INTEGER NOT NULL CHECK (current_tier BETWEEN 2 AND 6),
+        target_tier INTEGER NOT NULL CHECK (target_tier = current_tier - 1),
+        unlock_awarded INTEGER NOT NULL DEFAULT 0 CHECK (unlock_awarded IN (0, 1)),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'promoted', 'stayed')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TEXT,
+        UNIQUE (career_id, team_id, season)
+      );
+      CREATE INDEX idx_division_promotion_pending
+        ON division_promotion_offers(career_id, team_id, status, season);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
