@@ -64,7 +64,7 @@ export function evaluateBoardSeason(input: BoardSeasonInput): BoardSeasonResult 
   const primaryTargetRank = boundedInteger(input.expectedRank * (1 - AMBITION[input.difficulty]), 1, 12);
   const primaryAchieved = input.constructorPosition <= primaryTargetRank;
   const financialAchieved = input.closingCash >= 0.5 * input.requiredBudget;
-  const unlockDivisionObjective = input.expectedRank <= 3 && !input.higherDivisionUnlocked;
+  const unlockDivisionObjective = input.tier > 1 && input.expectedRank <= 3 && !input.higherDivisionUnlocked;
   const unlockDivisionAchieved = unlockDivisionObjective ? input.constructorPosition === 1 : null;
 
   let confidenceDelta = primaryAchieved ? 15 : -20;
