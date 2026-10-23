@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { INITIAL_DISTRIBUTIONS } from "./InitialDistributions";
 import { resolveFinancialDivisionMovement, type FinancialMovementTeam } from "./FinancialDivisionMovementEngine";
-import type { TierId } from "./GameConfig";
 
 function world(): FinancialMovementTeam[] {
   const teams: FinancialMovementTeam[] = [];
