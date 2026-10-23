@@ -31,7 +31,7 @@ describe("local schema migrations", () => {
       "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "driver_retirement_events",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }]);
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");
@@ -49,8 +49,10 @@ describe("local schema migrations", () => {
     expect(transitionColumns.map((column) => column.name)).toContain("result_json");
     const driverColumns = await database.query("PRAGMA table_info(drivers);");
     expect(driverColumns.map((column) => column.name)).toContain("gender");
+    expect(driverColumns.map((column) => column.name)).toContain("created_season");
     const retirementColumns = await database.query("PRAGMA table_info(driver_retirement_events);");
     expect(retirementColumns.map((column) => column.name)).toContain("became_staff_candidate");
+    expect(retirementColumns.map((column) => column.name)).toContain("reason");
   });
 
   it("enforces documented career mode and tier constraints", async () => {
