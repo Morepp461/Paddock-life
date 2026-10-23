@@ -83,6 +83,10 @@ describe("career contract service", () => {
   it("does not allow a third active race driver in the same season", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
+      await database.run(
+        "UPDATE drivers SET age = 17 WHERE driver_id IN (SELECT driver_id FROM driver_contracts WHERE team_id = ? AND end_season = 1);",
+        [teamId],
+      );
       const currentDrivers = await database.query(
         "SELECT dc.contract_id FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.end_season = 1 AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + 1 BETWEEN ? AND ? ORDER BY dc.contract_id LIMIT 2;",
         [teamId, TIER_CONFIG[3].driverAge.min, TIER_CONFIG[3].driverAge.max],
