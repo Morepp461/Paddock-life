@@ -72,6 +72,18 @@ describe("SaveManager", () => {
     expect(Array.from((await manager.load("slot3", "career3"))!.data)).toEqual([1]);
   });
 
+  it("deletes current and both rotating backups for a removed slot", async () => {
+    const storage = new MemorySaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot-delete", careerId: "career-delete", data: new Uint8Array([1]), trigger: "manual", isSandbox: false });
+    await manager.save({ slotId: "slot-delete", careerId: "career-delete", data: new Uint8Array([2]), trigger: "race-completed", isSandbox: false });
+    await manager.save({ slotId: "slot-delete", careerId: "career-delete", data: new Uint8Array([3]), trigger: "race-completed", isSandbox: false });
+    await manager.deleteSlot("slot-delete");
+    expect(await storage.read("slot-delete", "current")).toBeNull();
+    expect(await storage.read("slot-delete", "backup-1")).toBeNull();
+    expect(await storage.read("slot-delete", "backup-2")).toBeNull();
+  });
+
   it("rejects invalid slot IDs and empty snapshots", async () => {
     const manager = makeManager(new MemorySaveStorage());
     await expect(manager.save({ slotId: "../escape", careerId: "c", data: new Uint8Array([1]), trigger: "manual", isSandbox: false })).rejects.toThrow("slot");
