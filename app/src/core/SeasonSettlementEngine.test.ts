@@ -52,6 +52,10 @@ describe("season financial settlement", () => {
       const repeated = await settleCareerSeason(database, { careerId: career.careerId, season: 1, tier: 3 });
       expect(repeated).toEqual(result);
       expect(await database.query("SELECT COUNT(*) AS count FROM finances WHERE team_id IN (SELECT team_id FROM teams WHERE career_id = ?) AND season = 1;", [career.careerId])).toEqual(financeCountBeforeRetry);
+      await database.run("UPDATE races SET status = 'completed' WHERE division_id = 'T2' AND season = 1;");
+      const otherTierResult = await settleCareerSeason(database, { careerId: career.careerId, season: 1, tier: 2 });
+      expect(otherTierResult.teamsSettled).toBe(12);
+      expect(await database.query("SELECT COUNT(*) AS count FROM season_settlements WHERE career_id = ? AND season = 1;", [career.careerId])).toEqual([{ count: 24 }]);
     } finally {
       await database.close();
     }
