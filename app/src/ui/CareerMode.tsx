@@ -206,7 +206,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   const season = numberField(careerState, "current_season", 1);
   const playerTier = numberField(careerState, "current_division_tier", tier);
   const raceRows = await database.query(
-    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
+    "SELECT r.race_id, r.round, r.laps, r.circuit_id, r.track_condition, r.has_sprint, c.estimated_lap_seconds, c.abrasion, c.overtaking_difficulty, c.drs_zones FROM races r JOIN circuits c ON c.circuit_id = r.circuit_id WHERE r.division_id = ? AND r.season = ? AND r.status = 'scheduled' ORDER BY r.round LIMIT 1;",
     ["T" + tier, season],
   );
   const race = raceRows[0];
