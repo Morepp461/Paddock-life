@@ -24,7 +24,7 @@ The current main branch is an **early playable development build**, not a comple
 - Canonical source pools: 30 circuits, 72 teams, 3,325 names across 52 cultures and 199 country profiles, blocked full names, and 100 sponsor entries. Seed validators check the source data.
 - Deterministic career creation and world generation, including team takeover/new-team paths, local SQLite career data, generated roster/staff/managers, sponsor offers and save-slot discovery.
 - Career save management enforces the two free Career slots from the product spec and supports confirmed permanent deletion of a save database.
-- Board Objective lifecycle is wired end to end: initial source-backed objectives, standings/financial/unlock results, manager confidence and reputation changes, consecutive misses, dismissal eligibility, manager job offers and accept/decline UI. Repeated resolution is idempotent.
+- Board Objective lifecycle is wired end to end: initial source-backed objectives, standings/financial/unlock results, manager confidence and reputation changes, consecutive misses, dismissal eligibility, manager job offers and accept/decline UI. Repeated resolution is idempotent. Mid-season warnings are persisted at the documented 50% and 80% checkpoints when current constructor position is outside target; warnings do not reduce manager confidence.
 - Sponsor offer acceptance/rejection and active sponsor contract persistence.
 - Source-backed economy formulas, opening cash/entry-fee ledger entries, per-round operating/payroll costs, overdraft protection and atomic finance writes.
 - Idempotent season financial settlement for prize money, commercial revenue, achieved sponsor targets, debt interest and facility maintenance.
