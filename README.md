@@ -29,7 +29,7 @@ The current main branch is an **early playable development build**, not a comple
 - Source-backed economy formulas, opening cash/entry-fee ledger entries, per-round operating/payroll costs, overdraft protection and atomic finance writes.
 - Idempotent season financial settlement for prize money, commercial revenue, achieved sponsor targets, debt interest and facility maintenance.
 - 36 source-defined development catalog projects, deterministic development calculations, persistent project start/progress/completion/failure/cancellation, finance-ledger integration, development history, and player-team facility upgrades with source-defined costs and atomic finance writes. Broader long-term progression is still incomplete.
-- Local SQLite schema migrations, native Capacitor SQLite adapter and checksum-verified save orchestration interfaces.
+- Local SQLite schema migrations and native Capacitor SQLite adapter; versioned database snapshots, IndexedDB-backed current save plus two rotating backups, SHA-256 checksums, atomic snapshot restore with foreign-key validation, and automatic snapshots after career creation, race weekends, sponsor/contract/development transactions and season settlement.
 - Race QA workbench for simulation checks.
 
 ### Known gaps before the game can be considered fully testable
@@ -37,7 +37,7 @@ The current main branch is an **early playable development build**, not a comple
 - **Qualifying-to-race behavior:** the qualifying grid is persisted and displayed, but the race kernel still needs source-backed starting-grid integration; no undocumented grid-start time penalty should be added.
 - **Development gameplay:** the player-facing project lifecycle and facility upgrade transactions are wired and covered by automated tests; broader team development controls and season-to-season development balance still need end-to-end verification.
 - **Season loop and board outcomes:** season financial settlement is available, but next-season rollover, transfers, contracts, driver/staff progression, retirements, promotion/relegation, initial board objective generation and committing board outcomes to the career are not complete.
-- **Save recovery:** save slots can be found and resumed, but the rotating backup/snapshot/restore path needs concrete end-to-end integration and failure-recovery tests.
+- **Save recovery:** snapshot/backup/restore is integrated and covered by SQL.js tests for corruption and foreign-key rollback. Device-level fault injection and IndexedDB quota/availability testing remain required.
 - **Roster management:** persistent contract actions, recruitment/release rules and complete team management are still incomplete.
 - **Platform services:** cloud sync, authentication, server-authoritative rewarded ads and purchase validation are not complete; do not enable real monetization until their validation is in place.
 - **Device verification:** APK build success is not a substitute for installing and smoke-testing the APK on an Android device.
