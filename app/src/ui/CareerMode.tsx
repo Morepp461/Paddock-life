@@ -322,7 +322,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       await database.run(
         "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
         [String(race.race_id), row.driverId, teamId, raceGridByDriver.get(row.driverId) ?? qualifyingGridByDriver.get(row.driverId) ?? null, row.position,
-          weekend.race.totalLaps, fastestLap, compound, points, row.cumulativeTimeSeconds],
+          weekend.race.totalLaps, fastestLap, compoundByDriver.get(row.driverId) ?? TIER_CONFIG[tier].allowedDryCompounds[0]!, points, row.cumulativeTimeSeconds],
       );
       await upsertDriverStanding(database, tier, season, String(race.race_id), row.driverId, points,
         row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap);
