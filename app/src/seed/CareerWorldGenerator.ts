@@ -6,6 +6,7 @@ import { hashSeed, sampleBoundedNormal as sampleDelta } from "../core/RandomDist
 import { generateSeasonCalendar } from "../core/SeasonCalendar";
 import { selectSponsorTier } from "../core/SponsorEngine";
 import { calculateEntryFee } from "../core/EconomyEngine";
+import { createInitialPlayerBoardObjectives } from "../core/BoardObjectiveService";
 import { calculateFinancialIncomeProjections } from "../core/FinancialIncomeProjectionEngine";
 import { validateCareerSetupDraft, type CareerSetupDraft, type ValidatedCareerSetup, type CareerTeamCandidate } from "../core/CareerSetupEngine";
 import { generateName, normalizeFullName, type CountryNameProfile, type NameCulture, type NamePool } from "./NameGenerator";
@@ -437,6 +438,8 @@ export async function generateCareerWorld(
     const playerCount = await database.query("SELECT COUNT(*) AS count FROM teams WHERE career_id = ? AND is_player_team = 1;", [careerId]);
     if (Number(playerCount[0]?.count ?? 0) !== 1) throw new Error("Career harus memiliki tepat satu tim pemain.");
   });
+
+  await createInitialPlayerBoardObjectives(database, careerId);
 
   return {
     careerId, playerTeamId, selectedTier: validated.selectedTier,
