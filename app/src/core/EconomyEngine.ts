@@ -50,6 +50,18 @@ export function calculateAverageStaffPayroll(tier: EconomyTierId): number {
   return Math.round(requiredBudget(tier) * 0.15);
 }
 
+/** Distributes an annual salary across race rounds without losing rounding remainders. */
+export function calculateProratedRoundCost(annualCost: number, round: number, totalRounds: number): number {
+  assertFiniteNonNegative("AnnualCost", annualCost);
+  if (!Number.isSafeInteger(round) || !Number.isSafeInteger(totalRounds) ||
+      totalRounds < 1 || round < 1 || round > totalRounds) {
+    throw new RangeError("Round harus berada dalam rentang 1 sampai total rounds.");
+  }
+  const base = Math.floor(annualCost / totalRounds);
+  const remainder = annualCost % totalRounds;
+  return base + (round <= remainder ? 1 : 0);
+}
+
 export function calculateFacilityUpgradeCost(tier: EconomyTierId, currentLevel: number): number {
   if (!Number.isSafeInteger(currentLevel) || currentLevel < 1 || currentLevel >= 10) {
     throw new RangeError("Level fasilitas saat ini harus integer 1–9.");
