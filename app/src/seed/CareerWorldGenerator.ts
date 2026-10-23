@@ -683,10 +683,10 @@ export async function generateTier6RookieDrivers(
  */
 export async function generateSeasonFreeAgentDriver(
   database: IDatabase,
-  input: { readonly careerId: string; readonly tier: Exclude<TierId, 6>; readonly season: number; readonly slot: number },
+  input: { readonly careerId: string; readonly tier: Exclude<TierId, 6>; readonly season: number; readonly slot: string },
 ): Promise<string> {
   if (!input.careerId.trim() || !Number.isSafeInteger(input.season) || input.season < 2 ||
-      !Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 500) {
+      !input.slot.trim() || input.slot.length > 256) {
     throw new RangeError("Parameter rookie free-agent season tidak valid.");
   }
   const careerRows = await database.query("SELECT world_seed FROM career WHERE career_id = ?;", [input.careerId]);
