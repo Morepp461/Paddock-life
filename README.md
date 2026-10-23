@@ -28,7 +28,7 @@ The current main branch is an **early playable development build**, not a comple
 - Sponsor offer acceptance/rejection and active sponsor contract persistence.
 - Source-backed economy formulas, opening cash/entry-fee ledger entries, per-round operating/payroll costs, overdraft protection and atomic finance writes.
 - Idempotent season financial settlement for prize money, commercial revenue, achieved sponsor targets, debt interest and facility maintenance.
-- Source-backed financial division movement engine and schema for AI relegation, promotion-chain filling, movement cooldown, Tier 6 bankruptcy and division history; the engine is tested in isolation but still needs projected-income wiring and season-transition integration.
+- Source-backed financial division movement engine, projected-income formulas and atomic persistence for AI relegation, promotion-chain filling, movement cooldown, Tier 6 bankruptcy and division history; still needs season-transition orchestration and the Tier 6 replacement-team generator.
 - 36 source-defined development catalog projects, deterministic development calculations, persistent project start/progress/completion/failure/cancellation, finance-ledger integration, development history, and player-team facility upgrades with source-defined costs and atomic finance writes. Broader long-term progression is still incomplete.
 - Local SQLite schema migrations and native Capacitor SQLite adapter; versioned database snapshots, IndexedDB-backed current save plus two rotating backups, SHA-256 checksums, atomic snapshot restore with foreign-key validation, and automatic snapshots after career creation, race weekends, sponsor/contract/development transactions and season settlement.
 - Race QA workbench for simulation checks.
