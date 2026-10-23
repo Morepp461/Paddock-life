@@ -19,6 +19,7 @@ import { validateTeamPoolSeed, type TeamPoolSeedPayload } from "../seed/TeamSeed
 import { validateCareerSetupDraft, type CareerSetupDraft, type CareerTeamCandidate } from "../core/CareerSetupEngine";
 import { generateCareerWorld, type CareerGenerationResult } from "../seed/CareerWorldGenerator";
 import { openCareerDatabase } from "../storage/DatabaseFactory";
+import { CapacitorSQLiteDatabase } from "../storage/CapacitorSQLiteDatabase";
 import type { IDatabase } from "../storage/IDatabase";
 import RaceWorkbench from "./RaceWorkbench";
 import "./career-mode.css";
@@ -429,6 +430,10 @@ export default function CareerMode() {
 
   async function createCareer() {
     if (!catalog) return;
+    if (readSaveSlots().length >= 2) {
+      setError("Batas Career save gratis adalah 2 slot. Hapus salah satu save lama sebelum membuat career baru.");
+      return;
+    }
     setError("");
     try {
       const candidate = catalog.teams.find((team) => team.id === teamId);
@@ -454,7 +459,7 @@ export default function CareerMode() {
         const playerTeam = (await db.query("SELECT team_id, name FROM teams WHERE career_id = ? AND is_player_team = 1;", [result.careerId]))[0];
         if (!playerTeam) throw new Error("Tim pemain tidak ditemukan setelah world generation.");
         const slot: SaveSlot = { dbName, careerId: result.careerId, managerName, teamName: String(playerTeam.name), tier: result.selectedTier, savedAt: new Date().toISOString() };
-        const nextSlots = [slot, ...readSaveSlots().filter((item) => item.dbName !== dbName)].slice(0, 10);
+        const nextSlots = [slot, ...readSaveSlots().filter((item) => item.dbName !== dbName)].slice(0, 2);
         writeSaveSlots(nextSlots); setSaveSlots(nextSlots); setActiveSave(slot); setGeneration(result);
         setDatabase(db); setDashboard(await loadDashboard(db, result.careerId, result.playerTeamId, result.selectedTier)); setTab("overview");
       } catch (caught) {
@@ -465,6 +470,27 @@ export default function CareerMode() {
       setError(caught instanceof Error ? caught.message : "Career gagal dibuat. Save tidak dibuat dalam kondisi parsial.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function deleteCareerSave(slot: SaveSlot) {
+    const confirmed = window.confirm("Hapus career " + slot.teamName + "? Database save ini akan dihapus permanen dari perangkat.");
+    if (!confirmed) return;
+    setError("");
+    try {
+      if (activeSave?.dbName === slot.dbName && database) {
+        await database.close();
+        setDatabase(null);
+        setActiveSave(null);
+        setDashboard(null);
+        setGeneration(null);
+      }
+      await CapacitorSQLiteDatabase.removeDatabase(slot.dbName);
+      const nextSlots = readSaveSlots().filter((item) => item.dbName !== slot.dbName);
+      writeSaveSlots(nextSlots);
+      setSaveSlots(nextSlots);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Save gagal dihapus; data tidak dihapus dari daftar.");
     }
   }
 
@@ -776,7 +802,7 @@ export default function CareerMode() {
 
   return <main className="career-mode-root">
     <header className="career-header"><div className="career-brand"><span className="brand-mark">PL</span><div><small>MOTORSPORT MANAGEMENT</small><strong>PADDOCK LIFE</strong></div></div><span className="build-label">DEVELOPMENT BUILD</span></header>
-    {saveSlots.length > 0 && <section className="career-panel save-slots-panel"><div className="panel-title"><div><small>LOCAL SAVES</small><h2>Continue career</h2></div><span>{saveSlots.length} save slots</span></div>{saveSlots.map((slot) => <div className="save-slot" key={slot.dbName}><div><strong>{slot.teamName}</strong><span>{slot.managerName} · Tier {slot.tier} · {new Date(slot.savedAt).toLocaleDateString("id-ID")}</span></div><button className="secondary-button" disabled={creating} onClick={() => void resumeCareer(slot)}>Continue →</button></div>)}</section>}
+    {saveSlots.length > 0 && <section className="career-panel save-slots-panel"><div className="panel-title"><div><small>LOCAL SAVES</small><h2>Continue career</h2></div><span>{saveSlots.length} save slots</span></div>{saveSlots.map((slot) => <div className="save-slot" key={slot.dbName}><div><strong>{slot.teamName}</strong><span>{slot.managerName} · Tier {slot.tier} · {new Date(slot.savedAt).toLocaleDateString("id-ID")}</span></div><div className="save-slot-actions"><button className="secondary-button" disabled={creating} onClick={() => void resumeCareer(slot)}>Continue →</button><button className="danger-button" disabled={creating} onClick={() => void deleteCareerSave(slot)}>Delete</button></div></div>)}</section>}
     <section className="new-career-heading"><p className="eyebrow">CAREER MODE / NEW SAVE</p><h1>Build your <span>legacy.</span></h1><p>Pilih identitas manager, tentukan jalur karier, lalu bangun dunia balap dari seed sumber proyek.</p></section>
     {loadingCatalog && <section className="career-panel"><p>Memuat data dunia dan pool nama resmi…</p></section>}
     {catalogError && <section className="career-panel"><p className="inline-error">{catalogError}</p><button className="secondary-button" onClick={() => { setLoadingCatalog(true); setCatalogError(""); void loadCatalog().then(setCatalog).catch((caught) => setCatalogError(caught instanceof Error ? caught.message : "Katalog gagal dimuat.")).finally(() => setLoadingCatalog(false)); }}>Retry data load</button></section>}
