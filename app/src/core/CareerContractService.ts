@@ -137,6 +137,10 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
   ] as const) {
     if (!Number.isFinite(value) || value < 0) throw new RangeError(name + " tidak boleh negatif.");
   }
+  const releaseClause = input.releaseClause ?? 0;
+  if (releaseClause > 0 && (releaseClause < input.offeredSalary * 1.5 || releaseClause > input.offeredSalary * 3)) {
+    throw new RangeError("Release clause harus 1.5–3 kali gaji tahunan, atau 0 jika tanpa klausul.");
+  }
   const context = await contractContext(database, input);
   const score = evaluateContractOffer(context.terms);
   const currentSeason = n(context.career, "current_season", 1);

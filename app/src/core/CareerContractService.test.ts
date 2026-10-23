@@ -45,6 +45,15 @@ async function setup() {
 }
 
 describe("career contract service", () => {
+  it("rejects release clauses outside the documented 1.5–3x annual salary range", async () => {
+    const base = {
+      careerId: "career", teamId: "team", driverId: "driver",
+      startSeason: 2, durationSeasons: 2, offeredSalary: 100_000, role: "lead" as const,
+    };
+    await expect(offerDriverContract(null as never, { ...base, releaseClause: 149_999 })).rejects.toThrow("1.5–3");
+    await expect(offerDriverContract(null as never, { ...base, releaseClause: 300_001 })).rejects.toThrow("1.5–3");
+  });
+
   it("signs an accepted contract and records a signing bonus atomically", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
