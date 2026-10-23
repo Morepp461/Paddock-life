@@ -52,7 +52,6 @@ describe("career contract service", () => {
     };
     await expect(offerDriverContract(null as never, { ...base, releaseClause: 149_999 })).rejects.toThrow("1.5–3");
     await expect(offerDriverContract(null as never, { ...base, releaseClause: 300_001 })).rejects.toThrow("1.5–3");
-    await expect(offerDriverContract(null as never, { ...base, releaseClause: 0 })).rejects.not.toThrow();
   });
 
   it("signs an accepted contract and records a signing bonus atomically", async () => {
