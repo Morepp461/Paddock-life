@@ -430,26 +430,12 @@ export async function rollWorldSeasonForward(
     completedSeason: input.completedSeason,
     nextSeason,
   });
-  const roster = await prepareAiRoster(database, {
-    careerId: input.careerId,
-    worldSeed: String(career.world_seed),
-    completedSeason: input.completedSeason,
-    nextSeason,
-  });
-  if (!boardResolution.managerFired) {
-    const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [input.careerId]);
-    if (playerTeamRows[0]) {
-      await createBoardObjectivesForTeam(database, {
-        careerId: input.careerId,
-        teamId: String(playerTeamRows[0].team_id),
-        season: nextSeason,
-      });
-    }
-  }
-
-  const ageStep = "age-progression";
-  let driversRetiredByAge = 0;
-  if (!(await markerExists(database, input.careerId, nextSeason, ageStep))) {
+  const retirementStep = "driver-retirement-decisions";
+  const retirementMarker = await database.query(
+    "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
+    [input.careerId, nextSeason, retirementStep],
+  );
+  if (!retirementMarker[0]) {
     const replacementRows = await database.query(
       "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'tier6-replacement';",
       [input.careerId, nextSeason],
@@ -458,7 +444,7 @@ export async function rollWorldSeasonForward(
       ? JSON.parse(String(replacementRows[0].result_json)) as { createdTeamIds?: unknown }
       : {};
     const newTeamIds = Array.isArray(replacementResult.createdTeamIds) ? replacementResult.createdTeamIds.map(String) : [];
-    const newDriverIds = new Set<string>(roster.newTier6DriverIds);
+    const newDriverIds = new Set<string>();
     if (newTeamIds.length) {
       const newTeamDrivers = await database.query(
         "SELECT driver_id FROM driver_contracts WHERE team_id IN (" + newTeamIds.map(() => "?").join(",") + ") AND start_season = ? AND end_season = ?;",
@@ -480,40 +466,103 @@ export async function rollWorldSeasonForward(
        ORDER BY d.driver_id;`,
       [input.completedSeason, input.completedSeason, input.careerId, ...exclusions],
     );
-    const retirementDecisions = driverRows.map((row) => {
+    const decisions = driverRows.map((row) => {
       const tierValue = Number(String(row.division_id).replace(/^T/, ""));
       const tier = ([1, 2, 3, 4, 5, 6].includes(tierValue) ? tierValue : 1) as Tier;
       return evaluateAgeAndRetirement({
-        worldSeed: String(career.world_seed),
-        season: nextSeason,
-        entityId: String(row.driver_id),
-        kind: "driver",
-        age: n(row, "age"),
-        tier,
+        worldSeed: String(career.world_seed), season: nextSeason,
+        entityId: String(row.driver_id), kind: "driver", age: n(row, "age"), tier,
       });
+    }).filter((decision) => decision.shouldRetire);
+    await database.transaction(async () => {
+      const recheck = await database.query(
+        "SELECT step FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
+        [input.careerId, nextSeason, retirementStep],
+      );
+      if (recheck.length) return;
+      for (const decision of decisions) {
+        await database.run(
+          "UPDATE drivers SET age = ?, is_retired = 1, retire_reason = 'age' WHERE driver_id = ? AND career_id = ? AND is_retired = 0;",
+          [decision.ageAfter, decision.entityId, input.careerId],
+        );
+        await database.run(
+          `INSERT INTO driver_retirement_events
+            (career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'age');`,
+          [input.careerId, decision.entityId, nextSeason, decision.previousAge, decision.ageAfter,
+            decision.retirementProbability, decision.becomesStaff ? 1 : 0],
+        );
+      }
+      await database.run(
+        "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
+        [input.careerId, nextSeason, retirementStep, JSON.stringify({
+          driversRetiredByAge: decisions.length,
+          staffCandidates: decisions.filter((decision) => decision.becomesStaff).map((decision) => decision.entityId),
+          evaluatedDrivers: driverRows.length,
+          excludedNewDriverIds: exclusions,
+        })],
+      );
     });
+  }
+  const roster = await prepareAiRoster(database, {
+    careerId: input.careerId,
+    worldSeed: String(career.world_seed),
+    completedSeason: input.completedSeason,
+    nextSeason,
+  });
+  if (!boardResolution.managerFired) {
+    const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [input.careerId]);
+    if (playerTeamRows[0]) {
+      await createBoardObjectivesForTeam(database, {
+        careerId: input.careerId,
+        teamId: String(playerTeamRows[0].team_id),
+        season: nextSeason,
+      });
+    }
+  }
+
+  const ageStep = "age-progression";
+  let driversRetiredByAge = 0;
+  const retirementStateRows = await database.query(
+    "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
+    [input.careerId, nextSeason, retirementStep],
+  );
+  const retirementState = JSON.parse(String(retirementStateRows[0]?.result_json ?? "{}")) as {
+    driversRetiredByAge?: number; excludedNewDriverIds?: unknown;
+  };
+  driversRetiredByAge = Number(retirementState.driversRetiredByAge ?? 0);
+  if (!(await markerExists(database, input.careerId, nextSeason, ageStep))) {
+    const replacementRows = await database.query(
+      "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = 'tier6-replacement';",
+      [input.careerId, nextSeason],
+    );
+    const replacementResult = replacementRows[0]
+      ? JSON.parse(String(replacementRows[0].result_json)) as { createdTeamIds?: unknown }
+      : {};
+    const newTeamIds = Array.isArray(replacementResult.createdTeamIds) ? replacementResult.createdTeamIds.map(String) : [];
+    const newDriverIds = new Set<string>(Array.isArray(retirementState.excludedNewDriverIds) ? retirementState.excludedNewDriverIds.map(String) : []);
+    if (newTeamIds.length) {
+      const newTeamDrivers = await database.query(
+        "SELECT driver_id FROM driver_contracts WHERE team_id IN (" + newTeamIds.map(() => "?").join(",") + ") AND start_season = ? AND end_season = ?;",
+        [...newTeamIds, nextSeason, nextSeason],
+      );
+      for (const row of newTeamDrivers) newDriverIds.add(String(row.driver_id));
+    }
+    for (const id of roster.newTier6DriverIds) newDriverIds.add(id);
+    const exclusions = [...newDriverIds];
     await database.transaction(async () => {
       const recheck = await database.query(
         "SELECT step FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
         [input.careerId, nextSeason, ageStep],
       );
       if (recheck.length) return;
-      for (const decision of retirementDecisions) {
+      if (exclusions.length) {
         await database.run(
-          "UPDATE drivers SET age = ?, is_retired = ?, retire_reason = ? WHERE driver_id = ? AND career_id = ? AND is_retired = 0;",
-          [decision.ageAfter, decision.shouldRetire ? 1 : 0, decision.shouldRetire ? "age" : null,
-            decision.entityId, input.careerId],
+          "UPDATE drivers SET age = age + 1 WHERE career_id = ? AND is_retired = 0 AND driver_id NOT IN (" + exclusions.map(() => "?").join(",") + ");",
+          [input.careerId, ...exclusions],
         );
-        if (decision.shouldRetire) {
-          await database.run(
-            `INSERT INTO driver_retirement_events
-              (career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'age');`,
-            [input.careerId, decision.entityId, nextSeason, decision.previousAge, decision.ageAfter,
-              decision.retirementProbability, decision.becomesStaff ? 1 : 0],
-          );
-          driversRetiredByAge += 1;
-        }
+      } else {
+        await database.run("UPDATE drivers SET age = age + 1 WHERE career_id = ? AND is_retired = 0;", [input.careerId]);
       }
       await database.run(
         "UPDATE staff SET age = MIN(81, age + 1) WHERE career_id = ? AND team_id IN (SELECT team_id FROM teams WHERE career_id = ? AND founded_season < ?);",
@@ -522,20 +571,10 @@ export async function rollWorldSeasonForward(
       await database.run(
         "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
         [input.careerId, nextSeason, ageStep, JSON.stringify({
-          driversRetiredByAge,
-          excludedNewDriverIds: exclusions,
-          evaluatedDrivers: retirementDecisions.length,
-          staffCandidates: retirementDecisions.filter((decision) => decision.becomesStaff).map((decision) => decision.entityId),
+          driversRetiredByAge, excludedNewDriverIds: exclusions,
         })],
       );
     });
-  } else {
-    const ageRows = await database.query(
-      "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
-      [input.careerId, nextSeason, ageStep],
-    );
-    const saved = JSON.parse(String(ageRows[0]?.result_json ?? "{}")) as { driversRetiredByAge?: number };
-    driversRetiredByAge = Number(saved.driversRetiredByAge ?? 0);
   }
 
   await database.transaction(async () => {
