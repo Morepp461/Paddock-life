@@ -449,17 +449,19 @@ export default function CareerMode() {
     setDashboard(data);
   }, []);
 
-  async function persistSnapshot(db: IDatabase, slot: SaveSlot, trigger: SaveTrigger, isSandbox: boolean): Promise<void> {
+  async function persistSnapshot(db: IDatabase, slot: SaveSlot, trigger: SaveTrigger, isSandbox: boolean): Promise<boolean> {
     if (!saveManager) {
       setSnapshotError("Backup otomatis tidak tersedia di runtime ini. Career tetap tersimpan di SQLite lokal.");
-      return;
+      return false;
     }
     try {
       const data = await exportSqliteSnapshot(db);
       await saveManager.save({ slotId: slot.dbName, careerId: slot.careerId, data, trigger, isSandbox });
       setSnapshotError("");
+      return true;
     } catch (caught) {
       setSnapshotError("Backup snapshot gagal: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui") + ". Save SQLite utama tetap tersimpan.");
+      return false;
     }
   }
 
