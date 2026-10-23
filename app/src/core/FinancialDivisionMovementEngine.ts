@@ -97,7 +97,7 @@ export function resolveFinancialDivisionMovement(
       affordability: currentAffordability,
       nextDistressSeasons,
       nextSevereDistressSeasons,
-      nextMovementCooldown: Math.max(0, team.movementCooldown - 1),
+      nextMovementCooldown: team.movementCooldown,
     });
   }
 
@@ -121,7 +121,7 @@ export function resolveFinancialDivisionMovement(
     if (team.tier === 6) continue;
     const severe = state.affordability < SEVERE_THRESHOLD;
     const repeatedDistress = state.nextDistressSeasons >= DISTRESS_SEASONS_TO_RELEGATE;
-    const cooldownBlocksMove = state.nextMovementCooldown > 0 && !severe;
+    const cooldownBlocksMove = team.movementCooldown > 0 && !severe;
     if ((severe || repeatedDistress) && !cooldownBlocksMove) {
       const toTier = (team.tier + 1) as TierId;
       movedThisSeason.add(team.teamId);
@@ -171,15 +171,33 @@ export function resolveFinancialDivisionMovement(
 
   // Bankruptcy and movement can leave Tier 6 short; a separate name/team generator fills these slots.
   const activeTier6Count = [...working.values()].filter((team) => team.isActive && team.tier === 6).length;
-  const results = [...working.values()].map((team) => ({
-    ...team,
-    affordability: affordability({
-      teamId: team.teamId, tier: team.tier, isPlayerTeam: team.isPlayerTeam, isActive: team.isActive,
-      cash: team.cash, debt: team.debt, projectedIncome: team.projectedIncome, reputation: team.reputation,
-      distressSeasons: team.nextDistressSeasons, severeDistressSeasons: team.nextSevereDistressSeasons,
-      movementCooldown: team.nextMovementCooldown,
-    }, team.tier),
-  })).sort((a, b) => a.tier - b.tier || a.teamId.localeCompare(b.teamId));
+  const results = [...working.values()].map((team) => {
+    const currentAffordability = affordability(team, team.tier);
+    const moved = movedThisSeason.has(team.teamId);
+    const source = inputTeams.find((item) => item.teamId === team.teamId)!;
+    const nextDistressSeasons = !team.isActive ? 0
+      : moved ? (currentAffordability < DISTRESS_THRESHOLD ? 1 : 0)
+      : team.nextDistressSeasons;
+    const nextSevereDistressSeasons = !team.isActive ? 0
+      : moved ? (currentAffordability < SEVERE_THRESHOLD ? 1 : 0)
+      : team.nextSevereDistressSeasons;
+    const nextMovementCooldown = !team.isActive ? 0
+      : moved ? team.nextMovementCooldown
+      : Math.max(0, source.movementCooldown - 1);
+    return {
+      ...team,
+      affordability: currentAffordability,
+      nextDistressSeasons,
+      nextSevereDistressSeasons,
+      nextMovementCooldown,
+    };
+  }).sort((a, b) => a.tier - b.tier || a.teamId.localeCompare(b.teamId));
 
+  for (const tier of [1, 2, 3, 4, 5] as const) {
+    const count = results.filter((team) => team.isActive && team.tier === tier).length;
+    if (count !== 12) {
+      throw new Error("Financial movement could not preserve 12 teams in Tier " + tier + "; transition must roll back instead of saving an invalid world.");
+    }
+  }
   return { teams: results, events, newTier6SlotsNeeded: Math.max(0, 12 - activeTier6Count) };
 }
