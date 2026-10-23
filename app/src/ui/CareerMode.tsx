@@ -4,6 +4,7 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { calculateAverageStaffPayroll, calculateBalanceAfterTransaction, calculateOperatingCostPerRound, calculateTeamDriverPayroll } from "../core/EconomyEngine";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
+import { transitionWorldAfterSeason } from "../core/WorldSeasonTransitionService";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
@@ -763,9 +764,14 @@ export default function CareerMode() {
         setSeasonProgress("Settling Tier " + tierId + " finances…");
         await settleCareerSeason(database, { careerId: activeSave.careerId, season, tier: tierId });
       }
+      setSeasonProgress("Applying financial division movement and filling Tier 6 vacancies…");
+      const transition = await transitionWorldAfterSeason(database, {
+        careerId: activeSave.careerId,
+        completedSeason: season,
+      });
       await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
       setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
-      setSeasonProgress("World season complete.");
+      setSeasonProgress("Financial transition complete: " + transition.movementEvents.length + " team movements, " + transition.replacementTeamsCreated + " Tier 6 replacements. Next-season calendar and contract rollover are still pending.");
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "World season gagal diselesaikan; periksa status race dan settlement.");
     } finally { setSettlingSeason(false); }
