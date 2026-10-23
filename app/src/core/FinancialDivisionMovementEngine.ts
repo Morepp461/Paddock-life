@@ -81,9 +81,12 @@ export function resolveFinancialDivisionMovement(
     ] as const) {
       if (!Number.isFinite(value)) throw new RangeError(label + " must be finite.");
     }
-    if (team.debt < 0 || team.reputation < 0 || team.distressSeasons < 0 ||
-        team.severeDistressSeasons < 0 || team.movementCooldown < 0) {
-      throw new RangeError("Debt, reputation, distress counters, and cooldown cannot be negative.");
+    if (team.debt < 0 || team.reputation < 0 || team.reputation > 9999 ||
+        !Number.isSafeInteger(team.distressSeasons) || team.distressSeasons < 0 ||
+        !Number.isSafeInteger(team.severeDistressSeasons) || team.severeDistressSeasons < 0 ||
+        !Number.isSafeInteger(team.movementCooldown) || team.movementCooldown < 0 ||
+        Object.values(team.projectedIncomeByTier).some((value) => value < 0)) {
+      throw new RangeError("Debt, projected income, reputation, distress counters, and cooldown must be within their documented ranges.");
     }
   }
   for (const tier of [1, 2, 3, 4, 5, 6] as const) {
