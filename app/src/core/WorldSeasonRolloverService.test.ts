@@ -109,5 +109,66 @@ describe("world season rollover", () => {
     } finally {
       await database.close();
     }
+
+  it("retires a free agent after two completed seasons without a team", async () => {
+    const database = await makeDatabase();
+    try {
+      const worldSeed = "two-season-no-team-retirement-test";
+      const career = await generateCareerWorld(database, {
+        managerName: "Mata Dewa",
+        managerCountryCode: "IDN",
+        difficulty: "normal",
+        path: "takeover",
+        worldSeed,
+        takeoverTeamId: "D3-01",
+      }, { fetcher: seedFetcher, managerGender: "male" });
+
+      await database.run("UPDATE races SET status = 'completed' WHERE season = 1;");
+      const initialTeams = await database.query("SELECT team_id, division_id FROM teams WHERE career_id = ? AND is_active = 1;", [career.careerId]);
+      for (const team of initialTeams) {
+        const tier = Number(String(team.division_id).replace("T", "")) as 1 | 2 | 3 | 4 | 5 | 6;
+        await database.run("UPDATE teams SET cash = ?, debt = 0, distress_seasons = 0, severe_distress_seasons = 0, movement_cooldown = 0 WHERE team_id = ?;",
+          [INITIAL_DISTRIBUTIONS[tier].requiredBudget * 100, String(team.team_id)]);
+      }
+      for (const tier of [1, 2, 3, 4, 5, 6] as const) {
+        await settleCareerSeason(database, { careerId: career.careerId, season: 1, tier });
+      }
+      await rollWorldSeasonForward(database, { careerId: career.careerId, completedSeason: 1 });
+
+      const candidates = await database.query(
+        `SELECT d.driver_id FROM drivers d
+         WHERE d.career_id = ? AND d.is_retired = 0 AND d.created_season = 1
+           AND NOT EXISTS (SELECT 1 FROM driver_contracts dc WHERE dc.driver_id = d.driver_id AND dc.start_season <= 1 AND dc.end_season >= 1)
+           AND NOT EXISTS (SELECT 1 FROM driver_contracts dc WHERE dc.driver_id = d.driver_id AND dc.start_season <= 2 AND dc.end_season >= 2)
+         ORDER BY d.driver_id LIMIT 1;`,
+        [career.careerId],
+      );
+      expect(candidates).toHaveLength(1);
+      const candidateId = String(candidates[0]!.driver_id);
+      await database.run("UPDATE drivers SET age = 20 WHERE driver_id = ?;", [candidateId]);
+
+      await database.run("UPDATE races SET status = 'completed' WHERE season = 2;");
+      const seasonTwoTeams = await database.query("SELECT team_id, division_id FROM teams WHERE career_id = ? AND is_active = 1;", [career.careerId]);
+      for (const team of seasonTwoTeams) {
+        const tier = Number(String(team.division_id).replace("T", "")) as 1 | 2 | 3 | 4 | 5 | 6;
+        await database.run("UPDATE teams SET cash = ?, debt = 0, distress_seasons = 0, severe_distress_seasons = 0, movement_cooldown = 0 WHERE team_id = ?;",
+          [INITIAL_DISTRIBUTIONS[tier].requiredBudget * 100, String(team.team_id)]);
+      }
+      for (const tier of [1, 2, 3, 4, 5, 6] as const) {
+        await settleCareerSeason(database, { careerId: career.careerId, season: 2, tier });
+      }
+      const result = await rollWorldSeasonForward(database, { careerId: career.careerId, completedSeason: 2 });
+
+      expect(result.driversRetiredForNoTeam).toBeGreaterThanOrEqual(1);
+      expect(await database.query("SELECT is_retired, retire_reason FROM drivers WHERE driver_id = ?;", [candidateId]))
+        .toEqual([{ is_retired: 1, retire_reason: "no_team" }]);
+      expect(await database.query(
+        "SELECT reason, previous_age, age_after, retirement_probability FROM driver_retirement_events WHERE career_id = ? AND driver_id = ? AND season = 3;",
+        [career.careerId, candidateId],
+      )).toEqual([{ reason: "no_team", previous_age: 20, age_after: 21, retirement_probability: 1 }]);
+    } finally {
+      await database.close();
+    }
+  });
   });
 });
