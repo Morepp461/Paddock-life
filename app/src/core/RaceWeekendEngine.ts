@@ -41,6 +41,10 @@ export interface RaceWeekendResult {
   readonly sprint: RaceResult | null;
   readonly race: RaceResult;
   readonly sprintLaps: number | null;
+  /** Actual start order after the documented starts-skill adjustment. */
+  readonly raceStartingGrid: readonly string[];
+  /** Sprint starts are independently seeded; null when the weekend has no sprint. */
+  readonly sprintStartingGrid: readonly string[] | null;
   readonly fastestLapDriverIds: readonly string[];
 }
 
@@ -252,7 +256,7 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
   const raceLapRows = race.laps.flat();
   const fastestLapSeconds = Math.min(...raceLapRows.map((lap) => lap.lapTimeSeconds));
   const fastestLapDriverIds = [...new Set(raceLapRows.filter((lap) => lap.lapTimeSeconds === fastestLapSeconds).map((lap) => lap.driverId))].sort();
-  return { qualifying, sprint, race, sprintLaps, fastestLapDriverIds };
+  return { qualifying, sprint, race, sprintLaps, raceStartingGrid: raceGrid, sprintStartingGrid: sprint === null ? null : sprintGrid, fastestLapDriverIds };
 }
 
 
