@@ -112,8 +112,13 @@ export class SaveManager {
 
     const current = await this.storage.read(slotId, "current");
     if (current) {
-      await this.verifyRecord(current, slotId, careerId);
-      await this.storage.writeAtomic(slotId, "backup-1", current);
+      try {
+        await this.verifyRecord(current, slotId, careerId);
+        await this.storage.writeAtomic(slotId, "backup-1", current);
+      } catch {
+        // A corrupt current snapshot must never prevent restoring a verified backup
+        // or overwrite an existing known-good backup.
+      }
     }
     const restored: SaveRecord = {
       ...record,
