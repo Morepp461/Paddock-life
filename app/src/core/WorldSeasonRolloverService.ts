@@ -20,6 +20,7 @@ export interface WorldSeasonRolloverResult {
   readonly aiTeamsReady: number;
   readonly driversRetiredByAge: number;
   readonly driversRetiredForNoTeam: number;
+  readonly staffRetiredByAge: number;
   readonly financialMovements: number;
   readonly tier6ReplacementTeams: number;
   readonly managerFired: boolean;
@@ -552,6 +553,7 @@ export async function rollWorldSeasonForward(
   const ageStep = "age-progression";
   let driversRetiredByAge = 0;
   let driversRetiredForNoTeam = 0;
+  let staffRetiredByAge = 0;
   const retirementStateRows = await database.query(
     "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
     [input.careerId, nextSeason, retirementStep],
@@ -594,18 +596,45 @@ export async function rollWorldSeasonForward(
       } else {
         await database.run("UPDATE drivers SET age = age + 1 WHERE career_id = ? AND is_retired = 0;", [input.careerId]);
       }
-      await database.run(
-        "UPDATE staff SET age = MIN(81, age + 1) WHERE career_id = ? AND team_id IN (SELECT team_id FROM teams WHERE career_id = ? AND founded_season < ?);",
-        [input.careerId, input.careerId, nextSeason],
+      const staffRows = await database.query(
+        "SELECT staff_id, age FROM staff WHERE career_id = ? AND is_retired = 0 ORDER BY staff_id;",
+        [input.careerId],
       );
+      const staffDecisions = staffRows.map((row) => evaluateAgeAndRetirement({
+        worldSeed: String(career.world_seed), season: nextSeason,
+        entityId: String(row.staff_id), kind: "staff", age: n(row, "age"),
+      }));
+      for (const decision of staffDecisions) {
+        await database.run(
+          "UPDATE staff SET age = ?, is_retired = ?, team_id = CASE WHEN ? = 1 THEN NULL ELSE team_id END, is_free_agent = CASE WHEN ? = 1 THEN 0 ELSE is_free_agent END WHERE staff_id = ? AND career_id = ? AND is_retired = 0;",
+          [decision.ageAfter, decision.shouldRetire ? 1 : 0, decision.shouldRetire ? 1 : 0,
+            decision.shouldRetire ? 1 : 0, decision.entityId, input.careerId],
+        );
+        if (decision.shouldRetire) {
+          await database.run(
+            `INSERT INTO staff_retirement_events
+              (career_id, staff_id, season, previous_age, age_after, retirement_probability, reason)
+             VALUES (?, ?, ?, ?, ?, ?, 'age');`,
+            [input.careerId, decision.entityId, nextSeason, decision.previousAge, decision.ageAfter, decision.retirementProbability],
+          );
+          staffRetiredByAge += 1;
+        }
+      }
       await database.run(
         "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
         [input.careerId, nextSeason, ageStep, JSON.stringify({
-          driversRetiredByAge, driversRetiredForNoTeam, excludedNewDriverIds: exclusions,
+          driversRetiredByAge, driversRetiredForNoTeam, staffRetiredByAge, excludedNewDriverIds: exclusions,
         })],
       );
     });
   }
+
+  const ageStateRows = await database.query(
+    "SELECT result_json FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
+    [input.careerId, nextSeason, ageStep],
+  );
+  const ageState = JSON.parse(String(ageStateRows[0]?.result_json ?? "{}")) as { staffRetiredByAge?: number };
+  staffRetiredByAge = Number(ageState.staffRetiredByAge ?? 0);
 
   await database.transaction(async () => {
     const currentRows = await database.query("SELECT current_season FROM career WHERE career_id = ?;", [input.careerId]);
@@ -623,6 +652,7 @@ export async function rollWorldSeasonForward(
       aiTeamsReady: roster.aiTeamsReady,
       driversRetiredByAge,
       driversRetiredForNoTeam,
+      staffRetiredByAge,
       financialMovements: worldTransition.movementEvents.length,
       tier6ReplacementTeams: worldTransition.replacementTeamsCreated,
       managerFired: boardResolution.managerFired,
@@ -643,6 +673,7 @@ export async function rollWorldSeasonForward(
     aiTeamsReady: roster.aiTeamsReady,
     driversRetiredByAge,
     driversRetiredForNoTeam,
+    staffRetiredByAge,
     financialMovements: worldTransition.movementEvents.length,
     tier6ReplacementTeams: worldTransition.replacementTeamsCreated,
     managerFired: boardResolution.managerFired,
