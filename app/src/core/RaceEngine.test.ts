@@ -82,6 +82,7 @@ describe("deterministic race kernel", () => {
     expect(pitLap4.compound).toBe("hard");
     expect(pitLap4.pitLossSeconds).toBe(12.5);
     expect(pitLap4.tyreWearPercent).toBeGreaterThan(0);
+    expect(pitLap4.tyreWearPercent).toBeLessThan(baselineLap4.tyreWearPercent);
     expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeGreaterThan(0);
     expect(pitLap4.lapTimeSeconds - baselineLap4.lapTimeSeconds).toBeCloseTo(13.05, 8);
   });
