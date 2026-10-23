@@ -558,6 +558,7 @@ export default function CareerMode() {
         }
         let recovered: { database: IDatabase; dashboard: DashboardData; slot: SaveSlot } | null = null;
         let recoveryError = "";
+        let recoveredFrom = "current snapshot";
         const recoveryDbName = slot.dbName + "_recovered";
         for (const candidate of candidates) {
           let recoveryDb: IDatabase | null = null;
@@ -577,6 +578,7 @@ export default function CareerMode() {
             catch (caught) { setSnapshotError("Career dipulihkan, tetapi database lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
             try { await saveManager.deleteSlot(slot.dbName); }
             catch (caught) { setSnapshotError("Career dipulihkan, tetapi backup lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            recoveredFrom = candidate.backup ?? "current snapshot";
             recovered = { database: recoveryDb, dashboard: restoredDashboard, slot: restoredSlot };
             break;
           } catch (caught) {
@@ -591,7 +593,7 @@ export default function CareerMode() {
         }
         opened = { database: recovered.database, dashboard: recovered.dashboard };
         activeSlot = recovered.slot;
-        setSnapshotError("Save dipulihkan ke database baru dari " + (candidates.find((candidate) => candidate.record.data === undefined)?.backup ?? "snapshot valid") + ". Periksa career sebelum melanjutkan.");
+        setSnapshotError("Save dipulihkan ke database baru dari " + recoveredFrom + ". Periksa career sebelum melanjutkan.");
       }
       setDatabase(opened.database);
       setActiveSave(activeSlot);
