@@ -186,7 +186,6 @@ function makeQualifyingSession(input: RaceWeekendInput, sessionIndex: number): Q
   const base = calculateBaseLapSeconds(input.estimatedCircuitLapSeconds, input.tier);
   const times: Record<string, number> = {};
   for (const driver of input.drivers) {
-    const random = new SeededRandom(hashSeed([input.worldSeed, input.season, input.round, "qualifying", sessionIndex, driver.id]));
     const delta = calculatePerformanceDeltaSeconds(input.estimatedCircuitLapSeconds, {
       carScore: driver.carScore,
       driverScore: driver.qualifyingScore,
@@ -196,7 +195,15 @@ function makeQualifyingSession(input: RaceWeekendInput, sessionIndex: number): Q
       driverScore: config.referenceDriverOverall,
       setupScore: input.referenceSetupScore,
     });
-    times[driver.id] = base + delta + sampleBoundedNormal(random, 0.12, 2.5);
+    // Simulation Rules Addendum §12: each driver gets two runs; best lap counts.
+    // Qualifying randomness is sigma 0.10 s, clipped to ±0.25 s.
+    const runTimes = [1, 2].map((runIndex) => {
+      const random = new SeededRandom(hashSeed([
+        input.worldSeed, input.season, input.round, "qualifying", sessionIndex, runIndex, driver.id,
+      ]));
+      return base + delta + sampleBoundedNormal(random, 0.10, 2.5);
+    });
+    times[driver.id] = Math.min(...runTimes);
   }
   return { bestLapSecondsByDriver: times };
 }
@@ -235,10 +242,10 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
   };
   const sprintLaps = input.hasSprint ? Math.max(8, Math.round(input.totalLaps * 0.3)) : null;
   const sprintSeed = String(input.worldSeed) + ":sprint";
-  const sprintGrid = calculateStartingGrid({
-    worldSeed: input.worldSeed, season: input.season, round: input.round,
-    session: "sprint", qualifying, drivers: input.drivers,
-  });
+  // Division Ruleset §3: sprint starts directly from qualifying classification.
+  const sprintGrid = [...qualifying.classification]
+    .sort((left, right) => left.gridPosition - right.gridPosition)
+    .map((row) => row.driverId);
   const raceGrid = calculateStartingGrid({
     worldSeed: input.worldSeed, season: input.season, round: input.round,
     session: "race", qualifying, drivers: input.drivers,

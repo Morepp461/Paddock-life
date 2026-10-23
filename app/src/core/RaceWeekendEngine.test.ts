@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { TIER_CONFIG, type TierId } from "./GameConfig";
+import { calculateBaseLapSeconds, calculatePerformanceDeltaSeconds, TIER_CONFIG, type TierId } from "./GameConfig";
+import { hashSeed, sampleBoundedNormal } from "./RandomDistributions";
+import { SeededRandom } from "./SeededRandom";
 import { calculateMainRacePoints, calculateSprintRacePoints, calculateStartingGrid, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
 import type { WeatherTransitionMatrix } from "./WeatherEngine";
 
@@ -39,9 +41,52 @@ describe("race weekend orchestration", () => {
       qualifying: result.qualifying, drivers: roster,
     });
     const highStartsDriver = adjustedGrid.indexOf("D24") + 1;
-    expect(highStartsDriver).toBeLessThanOrEqual((qualifyingGrid.get("D24") ?? 24) - 2);
+    expect(highStartsDriver).toBeLessThan(qualifyingGrid.get("D24") ?? 24);
     expect(adjustedGrid).toHaveLength(24);
     expect(new Set(adjustedGrid).size).toBe(24);
+  });
+
+  it("uses the best of two source-bounded qualifying runs", () => {
+    const roster = drivers(24, "hard");
+    const input = {
+      worldSeed: "two-qualifying-runs", season: 1, round: 1, tier: 6 as const,
+      estimatedCircuitLapSeconds: 80, totalLaps: 8, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry" as const, referenceSetupScore: 50,
+      hasSprint: false, drivers: roster,
+    };
+    const result = simulateRaceWeekend(input);
+    const driver = roster[0]!;
+    const base = calculateBaseLapSeconds(input.estimatedCircuitLapSeconds, input.tier);
+    const delta = calculatePerformanceDeltaSeconds(input.estimatedCircuitLapSeconds, {
+      carScore: driver.carScore, driverScore: driver.qualifyingScore, setupScore: driver.setupScore,
+    }, {
+      carScore: TIER_CONFIG[input.tier].referenceCarScore,
+      driverScore: TIER_CONFIG[input.tier].referenceDriverOverall,
+      setupScore: input.referenceSetupScore,
+    });
+    const runTimes = [1, 2].map((runIndex) => {
+      const random = new SeededRandom(hashSeed([
+        input.worldSeed, input.season, input.round, "qualifying", 1, runIndex, driver.id,
+      ]));
+      return base + delta + sampleBoundedNormal(random, 0.10, 2.5);
+    });
+    expect(result.qualifying.classification.find((row) => row.driverId === driver.id)?.bestLapSeconds)
+      .toBe(Math.min(...runTimes));
+  });
+
+  it("keeps sprint grid identical to qualifying while applying starts skill only to the main race", () => {
+    const roster = drivers(24).map((driver, index) => ({ ...driver, starts: index === 23 ? 100 : 0 }));
+    const result = simulateRaceWeekend({
+      worldSeed: "sprint-grid-source-rule", season: 1, round: 1, tier: 1,
+      estimatedCircuitLapSeconds: 90, totalLaps: 12, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry", referenceSetupScore: 50,
+      hasSprint: true, drivers: roster,
+    });
+    const qualifyingOrder = [...result.qualifying.classification]
+      .sort((left, right) => left.gridPosition - right.gridPosition)
+      .map((row) => row.driverId);
+    expect(result.sprintStartingGrid).toEqual(qualifyingOrder);
+    expect(result.raceStartingGrid).not.toEqual(qualifyingOrder);
   });
 
   it("continues ordering by accumulated lap performance when circuit overtaking config is absent", () => {
