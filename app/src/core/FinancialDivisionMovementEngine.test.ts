@@ -86,6 +86,6 @@ describe("financial division movement", () => {
     expect(() => resolveFinancialDivisionMovement(world().slice(0, 71))).toThrow("exactly 72 teams");
     const teams = world();
     teams[1] = { ...teams[1]!, teamId: teams[0]!.teamId };
-    expect(() => resolveFinancialDivisionMovement(teams)).toThrow("duplicate");
+    expect(() => resolveFinancialDivisionMovement(teams)).toThrow("duplikat");
   });
 });
