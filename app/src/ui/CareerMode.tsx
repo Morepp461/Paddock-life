@@ -256,7 +256,9 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     String(driver.driver_id),
     numberField(driver, "is_player_team") === 1 ? compound : aiCompound,
   ]));
-  const gridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
+  const qualifyingGridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
+  const raceGridByDriver = new Map(weekend.raceStartingGrid.map((driverId, index) => [driverId, index + 1]));
+  const sprintGridByDriver = new Map((weekend.sprintStartingGrid ?? []).map((driverId, index) => [driverId, index + 1]));
   const raceLaps = weekend.race.laps.flat();
   const fastestRaceTime = Math.min(...raceLaps.map((lap) => lap.lapTimeSeconds));
   const fastestRaceDrivers = new Set(raceLaps.filter((lap) => lap.lapTimeSeconds === fastestRaceTime).map((lap) => lap.driverId));
@@ -274,7 +276,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         const points = calculateSprintRacePoints(row.position);
         await database.run(
           "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
-          [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
+          [String(race.race_id), row.driverId, teamId, sprintGridByDriver.get(row.driverId) ?? qualifyingGridByDriver.get(row.driverId) ?? null, row.position,
             weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compoundByDriver.get(row.driverId) ?? TIER_CONFIG[tier].allowedDryCompounds[0]!, points, row.cumulativeTimeSeconds],
         );
         await upsertDriverStanding(database, tier, season, String(race.race_id) + "_sprint", row.driverId, points);
@@ -296,7 +298,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       const points = calculateMainRacePoints(tier, row.position, fastestLap === 1);
       await database.run(
         "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
-        [String(race.race_id), row.driverId, teamId, gridByDriver.get(row.driverId) ?? null, row.position,
+        [String(race.race_id), row.driverId, teamId, raceGridByDriver.get(row.driverId) ?? qualifyingGridByDriver.get(row.driverId) ?? null, row.position,
           weekend.race.totalLaps, fastestLap, compound, points, row.cumulativeTimeSeconds],
       );
       await upsertDriverStanding(database, tier, season, String(race.race_id), row.driverId, points,
