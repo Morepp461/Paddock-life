@@ -1,12 +1,11 @@
 import type { IDatabase } from "../storage/IDatabase";
 import { evaluateBoardSeason, type BoardDifficulty } from "./BoardObjectiveEngine";
 import { INITIAL_DISTRIBUTIONS } from "./InitialDistributions";
-import { TIER_CONFIG, type TierId } from "./GameConfig";
+import type { TierId } from "./GameConfig";
 import { hashSeed } from "./RandomDistributions";
 
 type Row = Readonly<Record<string, unknown>>;
 type PlayableTier = Exclude<TierId, 6>;
-type Grade = "A" | "B" | "C" | "D";
 
 const GRADE_ORDER: Readonly<Record<string, number>> = { A: 0, B: 1, C: 2, D: 3 };
 
