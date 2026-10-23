@@ -4,6 +4,7 @@ import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
 import { calculateCircuitCarScore } from "../core/CircuitCarScore";
+import { calculateWeatherAdaptation } from "../core/WeatherEngine";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
@@ -252,7 +253,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     overtakingSkill: numberField(driver, "overtaking"), defendingSkill: numberField(driver, "defending"),
     setupScore: 50, formModifier: 0, aggression: numberField(driver, "aggression"),
     tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
-    compound: numberField(driver, "is_player_team") === 1 ? compound : aiCompound, weatherAdaptation: (numberField(driver, "adaptability") + numberField(driver, "wet_skill")) / 2,
+    compound: numberField(driver, "is_player_team") === 1 ? compound : aiCompound, weatherAdaptation: calculateWeatherAdaptation({ adaptability: numberField(driver, "adaptability"), wetSkill: numberField(driver, "wet_skill") }),
   }));
   const weekend = simulateRaceWeekend({
     worldSeed: seed, season, round: Number(race.round), tier,
