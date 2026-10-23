@@ -91,9 +91,10 @@ async function contractContext(database: IDatabase, input: DriverContractOfferIn
     [input.driverId, input.startSeason, input.startSeason],
   );
   if (activeContracts.length) throw new Error("Driver sudah memiliki kontrak aktif pada season yang ditawarkan.");
+  const ageOffset = Math.max(0, input.startSeason - n(career, "current_season", 1));
   const teamSeatRows = await database.query(
-    "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0;",
-    [input.teamId, input.startSeason, input.startSeason],
+    "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;",
+    [input.teamId, input.startSeason, input.startSeason, ageOffset, band.min, band.max],
   );
   if (n(teamSeatRows[0], "occupied_seats") >= 2) {
     throw new Error("Dua kursi race tim sudah terisi untuk season kontrak ini. Kontrak baru membutuhkan kursi kosong.");
