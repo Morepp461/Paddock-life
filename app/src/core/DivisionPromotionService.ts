@@ -1,4 +1,4 @@
-import type { IDatabase, DatabaseRow } from "../storage/IDatabase";
+import type { IDatabase } from "../storage/IDatabase";
 import type { TierId } from "./GameConfig";
 
 type Row = Readonly<Record<string, unknown>>;
