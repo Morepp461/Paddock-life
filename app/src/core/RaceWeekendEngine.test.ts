@@ -42,6 +42,8 @@ describe("race weekend orchestration", () => {
     expect(first.sprint?.totalLaps).toBe(8);
     expect(first.race.totalLaps).toBe(12);
     expect(first.race.classification.map((row) => row.driverId)).toEqual(second.race.classification.map((row) => row.driverId));
+    const nextSeason = simulateRaceWeekend({ ...input, season: 2 });
+    expect(nextSeason.race.laps[0]?.[0]?.lapTimeSeconds).not.toBe(first.race.laps[0]?.[0]?.lapTimeSeconds);
   });
 
   it("applies configured weather transitions deterministically and preserves minimum rain duration", () => {
