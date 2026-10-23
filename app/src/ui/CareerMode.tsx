@@ -558,7 +558,7 @@ export default function CareerMode() {
           try { candidates.push({ record: await saveManager.loadBackup(slot.dbName, slot.careerId, backup), backup }); }
           catch { /* invalid or missing backup; try the next candidate */ }
         }
-        let recovered: { database: IDatabase; dashboard: DashboardData; slot: SaveSlot } | null = null;
+        let recovered: { database: IDatabase; dashboard: DashboardData; slot: SaveSlot; warning: string } | null = null;
         let recoveryError = "";
         let recoveredFrom = "current snapshot";
         const recoveryDbName = slot.dbName + "_recovered";
@@ -572,16 +572,17 @@ export default function CareerMode() {
             if (!teams[0]) throw new Error("Snapshot tidak memiliki tim pemain.");
             const restoredDashboard = await loadDashboard(recoveryDb, slot.careerId, String(teams[0].team_id), slot.tier);
             const restoredSlot: SaveSlot = { ...slot, dbName: recoveryDbName, savedAt: new Date().toISOString() };
-            await persistSnapshot(recoveryDb, restoredSlot, "manual", field(restoredDashboard.career, "game_mode") === "sandbox");
+            const snapshotSaved = await persistSnapshot(recoveryDb, restoredSlot, "manual", field(restoredDashboard.career, "game_mode") === "sandbox");
+            const recoveryWarnings: string[] = snapshotSaved ? [] : ["snapshot baru gagal disimpan"];
             const nextSlots = readSaveSlots().map((item) => item.dbName === slot.dbName ? restoredSlot : item);
             writeSaveSlots(nextSlots);
             setSaveSlots(nextSlots);
             try { await CapacitorSQLiteDatabase.removeDatabase(slot.dbName); }
-            catch (caught) { setSnapshotError("Career dipulihkan, tetapi database lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            catch (caught) { recoveryWarnings.push("database lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
             try { await saveManager.deleteSlot(slot.dbName); }
-            catch (caught) { setSnapshotError("Career dipulihkan, tetapi backup lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            catch (caught) { recoveryWarnings.push("backup lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
             recoveredFrom = candidate.backup ?? "current snapshot";
-            recovered = { database: recoveryDb, dashboard: restoredDashboard, slot: restoredSlot };
+            recovered = { database: recoveryDb, dashboard: restoredDashboard, slot: restoredSlot, warning: recoveryWarnings.join("; ") };
             break;
           } catch (caught) {
             if (recoveryDb) await recoveryDb.close().catch(() => undefined);
@@ -595,7 +596,7 @@ export default function CareerMode() {
         }
         opened = { database: recovered.database, dashboard: recovered.dashboard };
         activeSlot = recovered.slot;
-        setSnapshotError("Save dipulihkan ke database baru dari " + recoveredFrom + ". Periksa career sebelum melanjutkan.");
+        setSnapshotError("Save dipulihkan ke database baru dari " + recoveredFrom + ". Periksa career sebelum melanjutkan." + (recovered.warning ? " Peringatan: " + recovered.warning + "." : ""));
       }
       setDatabase(opened.database);
       setActiveSave(activeSlot);
