@@ -6,6 +6,7 @@ import { offerDriverContract } from "./CareerContractService";
 import { hashSeed } from "./RandomDistributions";
 import { generateSeasonFreeAgentDriver, generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
+import { createBoardObjectivesForTeam, createManagerJobOffers, resolveBoardObjectivesForSeason } from "./BoardObjectiveService";
 
 type Tier = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -19,6 +20,8 @@ export interface WorldSeasonRolloverResult {
   readonly driversRetiredByAge: number;
   readonly financialMovements: number;
   readonly tier6ReplacementTeams: number;
+  readonly managerFired: boolean;
+  readonly jobOffersCreated: number;
 }
 
 function n(row: DatabaseRow | undefined, key: string, fallback = 0): number {
@@ -167,9 +170,11 @@ async function prepareAiRoster(
   database: IDatabase,
   input: { careerId: string; worldSeed: string; completedSeason: number; nextSeason: number },
 ): Promise<{ aiTeamsReady: number; newTier6DriverIds: string[] }> {
+  const managerRows = await database.query("SELECT status FROM career_managers WHERE career_id = ? AND is_player = 1;", [input.careerId]);
+  const includeFormerPlayerTeam = String(managerRows[0]?.status ?? "active") !== "active";
   const teams = await database.query(
-    "SELECT team_id, division_id, base_country, cash, founded_season FROM teams WHERE career_id = ? AND is_active = 1 AND is_player_team = 0 ORDER BY division_id, team_id;",
-    [input.careerId],
+    "SELECT team_id, division_id, base_country, cash, founded_season FROM teams WHERE career_id = ? AND is_active = 1 AND (is_player_team = 0 OR ? = 1) ORDER BY division_id, team_id;",
+    [input.careerId, includeFormerPlayerTeam ? 1 : 0],
   );
   const newTier6DriverIds: string[] = [];
   let aiTeamsReady = 0;
@@ -407,7 +412,17 @@ export async function rollWorldSeasonForward(
     throw new Error("Career season berubah; rollover harus dimulai dari season yang baru saja selesai.");
   }
 
+  const boardResolution = await resolveBoardObjectivesForSeason(database, {
+    careerId: input.careerId,
+    season: input.completedSeason,
+  });
   const worldTransition = await transitionWorldAfterSeason(database, input);
+  const jobOffers = await createManagerJobOffers(database, {
+    careerId: input.careerId,
+    completedSeason: input.completedSeason,
+    nextSeason,
+    resolution: boardResolution,
+  });
   const infrastructure = await createNextSeasonCalendarAndCars(database, {
     careerId: input.careerId,
     worldSeed: String(career.world_seed),
@@ -420,6 +435,16 @@ export async function rollWorldSeasonForward(
     completedSeason: input.completedSeason,
     nextSeason,
   });
+  if (!boardResolution.managerFired) {
+    const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [input.careerId]);
+    if (playerTeamRows[0]) {
+      await createBoardObjectivesForTeam(database, {
+        careerId: input.careerId,
+        teamId: String(playerTeamRows[0].team_id),
+        season: nextSeason,
+      });
+    }
+  }
 
   const ageStep = "age-progression";
   let driversRetiredByAge = 0;
@@ -496,6 +521,8 @@ export async function rollWorldSeasonForward(
       driversRetiredByAge,
       financialMovements: worldTransition.movementEvents.length,
       tier6ReplacementTeams: worldTransition.replacementTeamsCreated,
+      managerFired: boardResolution.managerFired,
+      jobOffersCreated: jobOffers.created,
     };
     await database.run(
       "INSERT OR IGNORE INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, 'season-rollover-ready', ?);",
@@ -513,5 +540,7 @@ export async function rollWorldSeasonForward(
     driversRetiredByAge,
     financialMovements: worldTransition.movementEvents.length,
     tier6ReplacementTeams: worldTransition.replacementTeamsCreated,
+    managerFired: boardResolution.managerFired,
+    jobOffersCreated: jobOffers.created,
   };
 }
