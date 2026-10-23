@@ -73,6 +73,8 @@ describe("player division promotion choices", () => {
   it("swaps the player team with the bottom-ranked team in an already unlocked tier", async () => {
     const { database, career, teamId } = await createCareer("D5-01", "promotion-swap-test");
     try {
+      // Model a save where Tier 4 is already unlocked for a team currently in Tier 5.
+      await database.run("UPDATE career SET highest_unlocked_tier = 3 WHERE career_id = ?;", [career.careerId]);
       const targetTeams = await database.query(
         "SELECT team_id FROM teams WHERE career_id = ? AND division_id = 'T4' AND is_active = 1 ORDER BY team_id;",
         [career.careerId],
