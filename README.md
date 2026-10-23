@@ -18,10 +18,13 @@ The current main branch is an **early playable development build**, not a comple
 
 ### Implemented and covered by automated tests
 - Deterministic seeded RNG and lap-by-lap race simulation, tyre pace/wear, weather transitions, qualifying classification and season calendar.
-- Race-weekend orchestration: qualifying, optional sprint, main race, result persistence, driver/constructor standings and points.
+- Race-weekend orchestration: qualifying, optional sprint, main race, result persistence, driver/constructor standings and points; qualifying poles are recorded, and the simulation seed uses the active season.
+- Stress tests cover 10,000 deterministic race simulations and 1,000 economy season cycles across all six tiers and 12 constructor positions.
 - Separate pit-stop, incident, reliability and neutralization engines. Their logic is tested independently, but not all of these systems are yet orchestrated by the career race flow.
 - Canonical source pools: 30 circuits, 72 teams, 3,325 names across 52 cultures and 199 country profiles, blocked full names, and 100 sponsor entries. Seed validators check the source data.
 - Deterministic career creation and world generation, including team takeover/new-team paths, local SQLite career data, generated roster/staff/managers, sponsor offers and save-slot discovery.
+- Career save management enforces the two free Career slots from the product spec and supports confirmed permanent deletion of a save database.
+- Board Objective calculations cover target rank, financial objective, confidence changes, manager reputation, consecutive primary misses and dismissal eligibility. Manager confidence is persisted and initialized from career path and difficulty; season-result persistence and initial target generation are not yet wired end to end.
 - Sponsor offer acceptance/rejection and active sponsor contract persistence.
 - Source-backed economy formulas, opening cash/entry-fee ledger entries, per-round operating/payroll costs, overdraft protection and atomic finance writes.
 - Idempotent season financial settlement for prize money, commercial revenue, achieved sponsor targets, debt interest and facility maintenance.
@@ -33,7 +36,7 @@ The current main branch is an **early playable development build**, not a comple
 - **Race integration:** the Career Mode race flow still uses simplified dry-track inputs and does not yet fully orchestrate pit stops, incidents, component failures, dynamic weather transitions and safety-car/virtual-safety-car effects into each race result.
 - **Qualifying-to-race behavior:** the qualifying grid is persisted and displayed, but the race kernel still needs source-backed starting-grid integration; no undocumented grid-start time penalty should be added.
 - **Development gameplay:** the player-facing project lifecycle and facility upgrade transactions are wired and covered by automated tests; broader team development controls and season-to-season development balance still need end-to-end verification.
-- **Season loop:** season settlement is available, but next-season rollover, transfers, contracts, driver/staff progression, retirements and promotion/relegation are not complete.
+- **Season loop and board outcomes:** season financial settlement is available, but next-season rollover, transfers, contracts, driver/staff progression, retirements, promotion/relegation, initial board objective generation and committing board outcomes to the career are not complete.
 - **Save recovery:** save slots can be found and resumed, but the rotating backup/snapshot/restore path needs concrete end-to-end integration and failure-recovery tests.
 - **Roster management:** persistent contract actions, recruitment/release rules and complete team management are still incomplete.
 - **Platform services:** cloud sync, authentication, server-authoritative rewarded ads and purchase validation are not complete; do not enable real monetization until their validation is in place.
