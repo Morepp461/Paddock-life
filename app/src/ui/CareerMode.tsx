@@ -129,12 +129,9 @@ async function loadDashboard(database: IDatabase, careerId: string, playerTeamId
     database.query(`SELECT o.offer_id, o.season, o.current_tier, o.target_tier, o.unlock_awarded, o.status,
       target.name AS target_team_name, target.cash AS target_team_cash
       FROM division_promotion_offers o
-      LEFT JOIN teams target ON target.career_id = o.career_id AND target.division_id = 'T' || o.target_tier
-        AND target.is_active = 1 AND target.is_player_team = 0
-      LEFT JOIN standings st ON st.team_id = target.team_id AND st.season = o.season
-        AND st.division_id = 'T' || o.target_tier AND st.driver_id IS NULL
+      JOIN teams target ON target.team_id = o.target_team_id
       WHERE o.career_id = ? AND o.team_id = ? AND o.season = ? AND o.status = 'pending'
-      ORDER BY COALESCE(st.points, 0) ASC, COALESCE(st.wins, 0) ASC, target.team_id DESC LIMIT 1;`, [careerId, playerTeamId, currentSeason]),
+      LIMIT 1;`, [careerId, playerTeamId, currentSeason]),
     database.query("SELECT manager_id, name, confidence, reputation, consecutive_primary_misses, status FROM career_managers WHERE career_id = ? AND is_player = 1 LIMIT 1;", [careerId]),
     database.query("SELECT o.offer_id, o.reason, o.offered_season, t.team_id, t.name AS team_name, t.division_id FROM manager_job_offers o JOIN teams t ON t.team_id = o.team_id WHERE o.career_id = ? AND o.status = 'pending' ORDER BY o.offered_season, t.division_id, t.name;", [careerId]),
     database.query("SELECT * FROM cars WHERE team_id = ? AND season = ? LIMIT 1;", [playerTeamId, currentSeason]),
