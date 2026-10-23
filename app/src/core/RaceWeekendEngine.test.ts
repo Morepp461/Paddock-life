@@ -44,6 +44,21 @@ describe("race weekend orchestration", () => {
     expect(new Set(adjustedGrid).size).toBe(24);
   });
 
+  it("keeps sprint grid identical to qualifying while applying starts skill only to the main race", () => {
+    const roster = drivers(24).map((driver, index) => ({ ...driver, starts: index === 23 ? 100 : 0 }));
+    const result = simulateRaceWeekend({
+      worldSeed: "sprint-grid-source-rule", season: 1, round: 1, tier: 1,
+      estimatedCircuitLapSeconds: 90, totalLaps: 12, trackAbrasion: 50,
+      trackTemperatureCelsius: 25, trackCondition: "dry", referenceSetupScore: 50,
+      hasSprint: true, drivers: roster,
+    });
+    const qualifyingOrder = [...result.qualifying.classification]
+      .sort((left, right) => left.gridPosition - right.gridPosition)
+      .map((row) => row.driverId);
+    expect(result.sprintStartingGrid).toEqual(qualifyingOrder);
+    expect(result.raceStartingGrid).not.toEqual(qualifyingOrder);
+  });
+
   it("continues ordering by accumulated lap performance when circuit overtaking config is absent", () => {
     const roster = drivers(24).map((driver, index) => index === 0
       ? { ...driver, carScore: 30, driverScore: 30, qualifyingScore: 100 }
