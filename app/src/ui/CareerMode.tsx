@@ -246,7 +246,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       lowSpeed: numberField(driver, "low_speed"), grip: numberField(driver, "mechanical_grip"),
       traction: numberField(driver, "traction"), braking: numberField(driver, "braking"),
     }),
-    driverScore: (numberField(driver, "pace") + numberField(driver, "qualifying") + numberField(driver, "racecraft") + numberField(driver, "consistency")) / 4,
+    driverScore: numberField(driver, "pace"),
     qualifyingScore: numberField(driver, "qualifying"),
     racecraft: numberField(driver, "racecraft"), starts: numberField(driver, "starts"),
     overtakingSkill: numberField(driver, "overtaking"), defendingSkill: numberField(driver, "defending"),
