@@ -458,11 +458,11 @@ export async function rollWorldSeasonForward(
       `SELECT d.driver_id, d.age, d.created_season,
         COALESCE((
           SELECT t.division_id FROM driver_contracts dc
-          JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id AND t.is_active = 1
+          JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id
           WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
           ORDER BY dc.end_season DESC, t.team_id LIMIT 1
         ), 'T1') AS division_id,
-        EXISTS(SELECT 1 FROM driver_contracts dc JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id AND t.is_active = 1 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?) AS has_team_this_season,
+        EXISTS(SELECT 1 FROM driver_contracts dc JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?) AS has_team_this_season,
         EXISTS(SELECT 1 FROM driver_contracts dc JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id AND t.is_active = 1 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?) AS had_team_previous_season
        FROM drivers d
        WHERE d.career_id = ? AND d.is_retired = 0${exclusions.length ? " AND d.driver_id NOT IN (" + exclusions.map(() => "?").join(",") + ")" : ""}
