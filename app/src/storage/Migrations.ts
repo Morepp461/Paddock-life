@@ -629,6 +629,26 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     `,
   },
   {
+    version: 17,
+    description: "persist staff age retirement decisions",
+    sql: `
+      ALTER TABLE staff ADD COLUMN is_retired INTEGER NOT NULL DEFAULT 0 CHECK (is_retired IN (0, 1));
+      CREATE TABLE staff_retirement_events (
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        staff_id TEXT NOT NULL REFERENCES staff(staff_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 2),
+        previous_age INTEGER NOT NULL CHECK (previous_age >= 28),
+        age_after INTEGER NOT NULL CHECK (age_after > previous_age),
+        retirement_probability REAL NOT NULL CHECK (retirement_probability BETWEEN 0 AND 1),
+        reason TEXT NOT NULL CHECK (reason = 'age'),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (career_id, staff_id, season)
+      );
+      CREATE INDEX idx_staff_retirement_events_season
+        ON staff_retirement_events(career_id, season);
+    `,
+  },
+  {
     version: 14,
     description: "persist player division unlock and promotion choices",
     sql: `
