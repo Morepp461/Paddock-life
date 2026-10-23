@@ -504,6 +504,25 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       ALTER TABLE career_managers ADD COLUMN consecutive_primary_misses INTEGER NOT NULL DEFAULT 0 CHECK (consecutive_primary_misses >= 0);
     `,
   },
+  {
+    version: 10,
+    description: "persist team division movement history and severe financial distress",
+    sql: `
+      ALTER TABLE teams ADD COLUMN severe_distress_seasons INTEGER NOT NULL DEFAULT 0 CHECK (severe_distress_seasons >= 0);
+      CREATE TABLE team_division_history (
+        history_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        from_tier INTEGER NOT NULL CHECK (from_tier BETWEEN 1 AND 6),
+        to_tier INTEGER CHECK (to_tier IS NULL OR to_tier BETWEEN 1 AND 6),
+        reason TEXT NOT NULL CHECK (reason IN ('financial_relegation', 'financial_promotion', 'bankruptcy', 'new_entrant', 'player_move')),
+        affordability REAL NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX idx_team_division_history_career ON team_division_history(career_id, season, team_id);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
