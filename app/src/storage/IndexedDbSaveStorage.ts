@@ -42,7 +42,14 @@ export class IndexedDbSaveStorage implements SaveStorage {
   private openDatabase(): Promise<IDBDatabase> {
     if (this.databasePromise) return this.databasePromise;
     this.databasePromise = new Promise((resolve, reject) => {
-      const request = this.factory.open(DATABASE_NAME, DATABASE_VERSION);
+      let request: IDBOpenDBRequest;
+      try {
+        request = this.factory.open(DATABASE_NAME, DATABASE_VERSION);
+      } catch (error) {
+        this.databasePromise = null;
+        reject(error instanceof Error ? error : new Error("Database backup gagal dibuka."));
+        return;
+      }
       request.onupgradeneeded = () => {
         const database = request.result;
         if (!database.objectStoreNames.contains(STORE_NAME)) {
