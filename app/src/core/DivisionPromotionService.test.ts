@@ -85,6 +85,16 @@ describe("player division promotion choices", () => {
     try {
       // Model a save where Tier 4 is already unlocked for a team currently in Tier 5.
       await database.run("UPDATE career SET highest_unlocked_tier = 3 WHERE career_id = ?;", [career.careerId]);
+      const currentTeams = await database.query(
+        "SELECT team_id FROM teams WHERE career_id = ? AND division_id = 'T5' AND is_active = 1 ORDER BY team_id;",
+        [career.careerId],
+      );
+      for (let index = 0; index < currentTeams.length; index += 1) {
+        await database.run(
+          "INSERT INTO standings (standing_id, season, division_id, driver_id, team_id, points, wins, podiums, poles, fastest_laps, dnfs) VALUES (?, 1, 'T5', NULL, ?, ?, 0, 0, 0, 0, 0);",
+          ["promotion-current-" + index, String(currentTeams[index]!.team_id), 20 - index],
+        );
+      }
       const targetTeams = await database.query(
         "SELECT team_id FROM teams WHERE career_id = ? AND division_id = 'T4' AND is_active = 1 ORDER BY team_id;",
         [career.careerId],
