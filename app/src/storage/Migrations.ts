@@ -588,6 +588,7 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         offer_id TEXT PRIMARY KEY,
         career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
         team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        target_team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
         season INTEGER NOT NULL CHECK (season >= 1),
         current_tier INTEGER NOT NULL CHECK (current_tier BETWEEN 2 AND 6),
         target_tier INTEGER NOT NULL CHECK (target_tier = current_tier - 1),
