@@ -542,6 +542,7 @@ export default function CareerMode() {
     setCreating(true);
     try {
       let opened: { database: IDatabase; dashboard: DashboardData };
+      let activeSlot = slot;
       try {
         opened = await openCareerSlot(slot);
       } catch (initialError) {
@@ -555,25 +556,32 @@ export default function CareerMode() {
           try { candidates.push({ record: await saveManager.loadBackup(slot.dbName, slot.careerId, backup), backup }); }
           catch { /* invalid or missing backup; try the next candidate */ }
         }
-        let recovered: { database: IDatabase; dashboard: DashboardData } | null = null;
+        let recovered: { database: IDatabase; dashboard: DashboardData; slot: SaveSlot } | null = null;
         let recoveryError = "";
+        const recoveryDbName = slot.dbName + "_recovered";
         for (const candidate of candidates) {
           let recoveryDb: IDatabase | null = null;
           try {
-            await CapacitorSQLiteDatabase.removeDatabase(slot.dbName);
-            recoveryDb = await openCareerDatabase(slot.dbName);
+            await CapacitorSQLiteDatabase.removeDatabase(recoveryDbName).catch(() => undefined);
+            recoveryDb = await openCareerDatabase(recoveryDbName);
             await restoreSqliteSnapshot(recoveryDb, candidate.record.data);
             const teams = await recoveryDb.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [slot.careerId]);
             if (!teams[0]) throw new Error("Snapshot tidak memiliki tim pemain.");
             const restoredDashboard = await loadDashboard(recoveryDb, slot.careerId, String(teams[0].team_id), slot.tier);
-            if (candidate.backup) {
-              try { await saveManager.restoreBackup(slot.dbName, slot.careerId, candidate.backup); }
-              catch (caught) { setSnapshotError("Data berhasil dipulihkan, tetapi penanda backup gagal diperbarui: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
-            }
-            recovered = { database: recoveryDb, dashboard: restoredDashboard };
+            const restoredSlot: SaveSlot = { ...slot, dbName: recoveryDbName, savedAt: new Date().toISOString() };
+            await persistSnapshot(recoveryDb, restoredSlot, "manual", field(restoredDashboard.career, "game_mode") === "sandbox");
+            const nextSlots = readSaveSlots().map((item) => item.dbName === slot.dbName ? restoredSlot : item);
+            writeSaveSlots(nextSlots);
+            setSaveSlots(nextSlots);
+            try { await CapacitorSQLiteDatabase.removeDatabase(slot.dbName); }
+            catch (caught) { setSnapshotError("Career dipulihkan, tetapi database lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            try { await saveManager.deleteSlot(slot.dbName); }
+            catch (caught) { setSnapshotError("Career dipulihkan, tetapi backup lama belum terhapus: " + (caught instanceof Error ? caught.message : "kesalahan tidak diketahui")); }
+            recovered = { database: recoveryDb, dashboard: restoredDashboard, slot: restoredSlot };
             break;
           } catch (caught) {
             if (recoveryDb) await recoveryDb.close().catch(() => undefined);
+            await CapacitorSQLiteDatabase.removeDatabase(recoveryDbName).catch(() => undefined);
             recoveryError = caught instanceof Error ? caught.message : "kesalahan restore tidak diketahui";
           }
         }
@@ -581,11 +589,12 @@ export default function CareerMode() {
           throw new Error("Save tidak bisa dibuka (" + (initialError instanceof Error ? initialError.message : "database tidak valid") +
             "). Pemulihan backup gagal" + (recoveryError ? ": " + recoveryError : "; tidak ada snapshot valid") + ".");
         }
-        opened = recovered;
-        setSnapshotError("Save dipulihkan dari snapshot backup. Periksa career sebelum melanjutkan.");
+        opened = { database: recovered.database, dashboard: recovered.dashboard };
+        activeSlot = recovered.slot;
+        setSnapshotError("Save dipulihkan ke database baru dari " + (candidates.find((candidate) => candidate.record.data === undefined)?.backup ?? "snapshot valid") + ". Periksa career sebelum melanjutkan.");
       }
       setDatabase(opened.database);
-      setActiveSave(slot);
+      setActiveSave(activeSlot);
       setGeneration(null);
       setDashboard(opened.dashboard);
       setTab("overview");
