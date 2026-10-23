@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { TIER_CONFIG, type TierId } from "./GameConfig";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
 import type { WeatherTransitionMatrix } from "./WeatherEngine";
 
-function drivers(count: number): RaceWeekendDriver[] {
+function drivers(count: number, compound: RaceWeekendDriver["compound"] = "medium"): RaceWeekendDriver[] {
   return Array.from({ length: count }, (_, index) => ({
     id: "D" + String(index + 1).padStart(2, "0"),
     name: "Driver " + String(index + 1).padStart(2, "0"),
@@ -14,7 +15,7 @@ function drivers(count: number): RaceWeekendDriver[] {
     aggression: 50,
     tyreManagement: 60,
     mechanicalGrip: 70,
-    compound: "medium",
+    compound,
     weatherAdaptation: 50,
   }));
 }
@@ -74,6 +75,37 @@ describe("race weekend orchestration", () => {
     expect(conditions.slice(0, 6).every((condition) => condition !== "dry")).toBe(true);
     expect(conditions).toEqual(second.race.laps.map((lap) => lap[0]!.trackCondition));
     expect(conditions[6]).toBe("dry");
+  });
+
+  it("completes a deterministic race weekend for every tier configuration", () => {
+    const tiers: readonly TierId[] = [1, 2, 3, 4, 5, 6];
+    for (const tier of tiers) {
+      const config = TIER_CONFIG[tier];
+      const compound = config.allowedDryCompounds[0]!;
+      const input = {
+        worldSeed: "all-tier-weekend-" + tier,
+        season: 1,
+        round: 1,
+        tier,
+        estimatedCircuitLapSeconds: 55 + tier * 4,
+        totalLaps: 8,
+        trackAbrasion: 45,
+        trackTemperatureCelsius: 22,
+        trackCondition: "dry" as const,
+        referenceSetupScore: 50,
+        hasSprint: config.sprintRacesPerSeason > 0,
+        drivers: drivers(config.gridSize, compound),
+      };
+      const first = simulateRaceWeekend(input);
+      const second = simulateRaceWeekend(input);
+      expect(first.qualifying.classification).toHaveLength(config.gridSize);
+      expect(first.race.classification).toHaveLength(config.gridSize);
+      expect(first.race.totalLaps).toBe(8);
+      expect(first.sprint !== null).toBe(config.sprintRacesPerSeason > 0);
+      expect(first.race.classification.map((row) => row.driverId))
+        .toEqual(second.race.classification.map((row) => row.driverId));
+      expect(new Set(first.race.classification.map((row) => row.driverId)).size).toBe(config.gridSize);
+    }
   });
 
   it("does not create a sprint session when the calendar round has no sprint", () => {
