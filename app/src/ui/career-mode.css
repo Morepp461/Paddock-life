@@ -19,3 +19,8 @@
 
 .save-slot-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.danger-button{border:1px solid #733b37;background:#261716;color:#f2b8b2;padding:10px 14px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.danger-button:hover{border-color:#c64d43;background:#341b19}.danger-button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:560px){.save-slot-actions{width:100%}.save-slot-actions button{flex:1}}
+
+.job-offer-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--cm-line)}
+.job-offer-row>div:first-child{display:grid;gap:3px;min-width:0}
+.job-offer-row small{color:var(--cm-muted);font-size:11px;text-transform:capitalize}
+@media(max-width:480px){.job-offer-row{align-items:stretch;flex-direction:column}.job-offer-row .sponsor-actions{flex-direction:row}.job-offer-row .mini-action{width:auto;flex:1}}
