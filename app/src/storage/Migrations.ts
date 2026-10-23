@@ -496,6 +496,14 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_driver_negotiation_cooldown ON driver_negotiation_cooldowns(career_id, team_id, until_season, until_race);
     `,
   },
+  {
+    version: 9,
+    description: "persist manager board confidence and consecutive primary objective misses",
+    sql: `
+      ALTER TABLE career_managers ADD COLUMN confidence INTEGER NOT NULL DEFAULT 60 CHECK (confidence BETWEEN 0 AND 100);
+      ALTER TABLE career_managers ADD COLUMN consecutive_primary_misses INTEGER NOT NULL DEFAULT 0 CHECK (consecutive_primary_misses >= 0);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
