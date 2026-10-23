@@ -13,7 +13,7 @@ function world(): FinancialMovementTeam[] {
         isActive: true,
         cash: INITIAL_DISTRIBUTIONS[tier].requiredBudget,
         debt: 0,
-        projectedIncome: 0,
+        projectedIncomeByTier: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
         reputation: INITIAL_DISTRIBUTIONS[tier].reputationRange[0] + 100,
         distressSeasons: 0,
         severeDistressSeasons: 0,
@@ -63,7 +63,7 @@ describe("financial division movement", () => {
   it("respects movement cooldown for ordinary distress but allows severe financial relegation", () => {
     const teams = world();
     const ordinary = teams.findIndex((team) => team.teamId === "T2-01");
-    teams[ordinary] = { ...teams[ordinary]!, cash: 0, projectedIncome: INITIAL_DISTRIBUTIONS[2].requiredBudget * 0.8, distressSeasons: 1, movementCooldown: 2 };
+    teams[ordinary] = { ...teams[ordinary]!, cash: 0, projectedIncomeByTier: { 1: 0, 2: INITIAL_DISTRIBUTIONS[2].requiredBudget * 0.8, 3: 0, 4: 0, 5: 0, 6: 0 }, distressSeasons: 1, movementCooldown: 2 };
     const severe = teams.findIndex((team) => team.teamId === "T3-01");
     teams[severe] = { ...teams[severe]!, cash: 0, movementCooldown: 2 };
     const result = resolveFinancialDivisionMovement(teams);
