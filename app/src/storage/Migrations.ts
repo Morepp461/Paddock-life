@@ -638,7 +638,7 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         staff_id TEXT NOT NULL REFERENCES staff(staff_id) ON DELETE CASCADE,
         season INTEGER NOT NULL CHECK (season >= 2),
         previous_age INTEGER NOT NULL CHECK (previous_age >= 28),
-        age_after INTEGER NOT NULL CHECK (age_after > previous_age),
+        age_after INTEGER NOT NULL CHECK (age_after >= previous_age AND age_after <= 81),
         retirement_probability REAL NOT NULL CHECK (retirement_probability BETWEEN 0 AND 1),
         reason TEXT NOT NULL CHECK (reason = 'age'),
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
