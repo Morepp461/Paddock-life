@@ -96,7 +96,7 @@ describe("player division promotion choices", () => {
         );
       }
       const targetTeams = await database.query(
-        "SELECT team_id FROM teams WHERE career_id = ? AND division_id = 'T4' AND is_active = 1 ORDER BY team_id;",
+        "SELECT team_id, name FROM teams WHERE career_id = ? AND division_id = 'T4' AND is_active = 1 ORDER BY team_id;",
         [career.careerId],
       );
       for (let index = 0; index < targetTeams.length; index += 1) {
@@ -105,8 +105,17 @@ describe("player division promotion choices", () => {
           ["promotion-target-" + index, String(targetTeams[index]!.team_id), 100 - index],
         );
       }
+      // Simulate financial movement: the original bottom Tier 4 team moves out and
+      // an incoming Tier 5 team takes its slot. Promotion must select the lowest
+      // remaining team with Tier 4's completed-season standings, not the newcomer.
+      const movedOutTeamId = String(targetTeams[targetTeams.length - 1]!.team_id);
+      const movedInTeam = [...currentTeams].reverse().find((row) => String(row.team_id) !== teamId)!;
+      await database.run("UPDATE teams SET division_id = 'T5' WHERE team_id = ?;", [movedOutTeamId]);
+      await database.run("UPDATE teams SET division_id = 'T4' WHERE team_id = ?;", [String(movedInTeam.team_id)]);
+      const expectedExchangeName = String(targetTeams[targetTeams.length - 2]!.name);
       const offer = await prepareDivisionPromotionOffer(database, { careerId: career.careerId, completedSeason: 1 });
       expect(offer?.targetTier).toBe(4);
+      expect(offer?.targetTeamName).toBe(expectedExchangeName);
       expect(offer?.unlockAwarded).toBe(false);
       const resolved = await resolveDivisionPromotionChoice(database, {
         careerId: career.careerId, offerId: offer!.offerId, choice: "promote",
