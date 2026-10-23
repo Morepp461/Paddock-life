@@ -4,6 +4,7 @@ import { generateSeasonCalendar, type CalendarCircuit } from "./SeasonCalendar";
 import { calculateDriverAskingSalary, generateDriverDemandFactor } from "./ContractNegotiationEngine";
 import { offerDriverContract } from "./CareerContractService";
 import { hashSeed } from "./RandomDistributions";
+import { evaluateAgeAndRetirement } from "./AgeAndRetireEngine";
 import { generateSeasonFreeAgentDriver, generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
 import { createBoardObjectivesForTeam, createManagerJobOffers, resolveBoardObjectivesForSeason } from "./BoardObjectiveService";
@@ -466,33 +467,66 @@ export async function rollWorldSeasonForward(
       for (const row of newTeamDrivers) newDriverIds.add(String(row.driver_id));
     }
     const exclusions = [...newDriverIds];
+    const driverRows = await database.query(
+      `SELECT d.driver_id, d.age,
+        COALESCE((
+          SELECT t.division_id FROM driver_contracts dc
+          JOIN teams t ON t.team_id = dc.team_id AND t.career_id = d.career_id
+          WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+          ORDER BY dc.end_season DESC, t.team_id LIMIT 1
+        ), 'T1') AS division_id
+       FROM drivers d
+       WHERE d.career_id = ? AND d.is_retired = 0${exclusions.length ? " AND d.driver_id NOT IN (" + exclusions.map(() => "?").join(",") + ")" : ""}
+       ORDER BY d.driver_id;`,
+      [input.completedSeason, input.completedSeason, input.careerId, ...exclusions],
+    );
+    const retirementDecisions = driverRows.map((row) => {
+      const tierValue = Number(String(row.division_id).replace(/^T/, ""));
+      const tier = ([1, 2, 3, 4, 5, 6].includes(tierValue) ? tierValue : 1) as Tier;
+      return evaluateAgeAndRetirement({
+        worldSeed: String(career.world_seed),
+        season: nextSeason,
+        entityId: String(row.driver_id),
+        kind: "driver",
+        age: n(row, "age"),
+        tier,
+      });
+    });
     await database.transaction(async () => {
       const recheck = await database.query(
         "SELECT step FROM world_transition_steps WHERE career_id = ? AND season = ? AND step = ?;",
         [input.careerId, nextSeason, ageStep],
       );
       if (recheck.length) return;
-      if (exclusions.length) {
+      for (const decision of retirementDecisions) {
         await database.run(
-          "UPDATE drivers SET age = age + 1 WHERE career_id = ? AND is_retired = 0 AND driver_id NOT IN (" + exclusions.map(() => "?").join(",") + ");",
-          [input.careerId, ...exclusions],
+          "UPDATE drivers SET age = ?, is_retired = ?, retire_reason = ? WHERE driver_id = ? AND career_id = ? AND is_retired = 0;",
+          [decision.ageAfter, decision.shouldRetire ? 1 : 0, decision.shouldRetire ? "age" : null,
+            decision.entityId, input.careerId],
         );
-      } else {
-        await database.run("UPDATE drivers SET age = age + 1 WHERE career_id = ? AND is_retired = 0;", [input.careerId]);
+        if (decision.shouldRetire) {
+          await database.run(
+            `INSERT INTO driver_retirement_events
+              (career_id, driver_id, season, previous_age, age_after, retirement_probability, became_staff_candidate, reason)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'age');`,
+            [input.careerId, decision.entityId, nextSeason, decision.previousAge, decision.ageAfter,
+              decision.retirementProbability, decision.becomesStaff ? 1 : 0],
+          );
+          driversRetiredByAge += 1;
+        }
       }
       await database.run(
-        "UPDATE staff SET age = age + 1 WHERE career_id = ? AND team_id IN (SELECT team_id FROM teams WHERE career_id = ? AND founded_season < ?);",
+        "UPDATE staff SET age = MIN(81, age + 1) WHERE career_id = ? AND team_id IN (SELECT team_id FROM teams WHERE career_id = ? AND founded_season < ?);",
         [input.careerId, input.careerId, nextSeason],
       );
       await database.run(
-        "UPDATE drivers SET is_retired = 1, retire_reason = 'age' WHERE career_id = ? AND is_retired = 0 AND age > ?;",
-        [input.careerId, TIER_CONFIG[1].driverAge.max],
-      );
-      const retiredRows = await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND is_retired = 1 AND retire_reason = 'age';", [input.careerId]);
-      driversRetiredByAge = n(retiredRows[0], "count");
-      await database.run(
         "INSERT INTO world_transition_steps (career_id, season, step, result_json) VALUES (?, ?, ?, ?);",
-        [input.careerId, nextSeason, ageStep, JSON.stringify({ driversRetiredByAge: driversRetiredByAge, excludedNewDriverIds: exclusions })],
+        [input.careerId, nextSeason, ageStep, JSON.stringify({
+          driversRetiredByAge,
+          excludedNewDriverIds: exclusions,
+          evaluatedDrivers: retirementDecisions.length,
+          staffCandidates: retirementDecisions.filter((decision) => decision.becomesStaff).map((decision) => decision.entityId),
+        })],
       );
     });
   } else {
