@@ -799,7 +799,21 @@ export default function CareerMode() {
         completedSeason: season,
       });
       await persistSnapshot(database, activeSave, "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
-      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+      const playerTeamAfterRollover = (await database.query(
+        "SELECT team_id, name, division_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1 LIMIT 1;",
+        [activeSave.careerId],
+      ))[0];
+      if (!playerTeamAfterRollover) throw new Error("Tim pemain tidak ditemukan setelah financial division movement.");
+      const nextTier = tierFromValue(field(playerTeamAfterRollover, "division_id"));
+      const nextSave = {
+        ...activeSave,
+        teamName: field(playerTeamAfterRollover, "name", activeSave.teamName),
+        tier: nextTier,
+        savedAt: new Date().toISOString(),
+      };
+      setActiveSave(nextSave);
+      writeSaveSlots(readSaveSlots().map((slot) => slot.dbName === nextSave.dbName ? nextSave : slot));
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(playerTeamAfterRollover.team_id), nextTier));
       setSeasonProgress("Season " + rollover.currentSeason + " is ready: " + rollover.aiTeamsReady + " AI teams have valid race rosters, " + rollover.financialMovements + " financial movements, " + rollover.tier6ReplacementTeams + " Tier 6 replacements.");
     } catch (caught) {
       setSettlementError(caught instanceof Error ? caught.message : "World season gagal diselesaikan; periksa status race dan settlement.");
@@ -906,7 +920,7 @@ export default function CareerMode() {
         </article>
         <article className="career-panel"><small>WORLD STATUS</small><div className="big-number">{dashboard.teams.length}<span>/ 12</span></div><p>Teams in this division</p><div className="stat-line"><span>Drivers in roster</span><b>{dashboard.roster.length}/2</b></div><div className="stat-line"><span>Active sponsor offers</span><b>{dashboard.sponsors.length}</b></div></article>
         <article className="career-panel"><small>BOARD OBJECTIVES</small><h2>Confidence {numberField(dashboard.manager ?? undefined, "confidence", 60)}%</h2><p className="muted-text">Manager reputation {numberField(dashboard.manager ?? undefined, "reputation")}</p>{dashboard.boardObjectives.map((objective) => { const objectiveType = field(objective, "objective_type"); let status = "Pending"; const rawResult = field(objective, "result"); if (rawResult) { try { const parsed = JSON.parse(rawResult) as { achieved?: boolean | null }; status = parsed.achieved === true ? "Achieved" : parsed.achieved === false ? "Missed" : "Resolved"; } catch { status = "Resolved"; } } const label = objectiveType === "standings" ? "Constructor target P" + field(objective, "target_value") : objectiveType === "financial" ? "Closing cash target" : "Division unlock"; return <div className="stat-line" key={objectiveType}><span>{label}</span><b>{status}</b></div>; })}{dashboard.manager && field(dashboard.manager, "status") !== "active" && <p className="inline-error">Manager status: {field(dashboard.manager, "status")}. Pilih tawaran tim untuk melanjutkan karier.</p>}{dashboard.jobOffers.map((offer) => <div className="job-offer-row" key={field(offer, "offer_id")}><div><b>{field(offer, "team_name")}</b><small>Tier {tierFromValue(field(offer, "division_id"))} · {field(offer, "reason")}</small></div><div className="sponsor-actions"><button className="mini-action accept" onClick={() => void resolveManagerOffer(field(offer, "offer_id"), true)}>Accept</button><button className="mini-action" onClick={() => void resolveManagerOffer(field(offer, "offer_id"), false)}>Decline</button></div></div>)}</article>
-        <article className="career-panel"><small>CAR DEVELOPMENT</small><h2>Season 1</h2><p className="muted-text">Project development kini tersedia di tab Development. Facility upgrades dan kontrak driver belum tersedia.</p></article>
+        <article className="career-panel"><small>CAR DEVELOPMENT</small><h2>Season {numberField(dashboard.career, "current_season", 1)}</h2><p className="muted-text">Atur proyek development, upgrade fasilitas, dan negosiasi kontrak driver dari tab terkait.</p></article>
         {lastRace && <>
           <article className="career-panel wide-panel"><small>QUALIFYING CLASSIFICATION</small><h2>Starting grid</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>GRID</th><th>DRIVER</th><th>BEST LAP</th></tr></thead><tbody>{[...lastRace.qualifying.classification].sort((a,b)=>a.gridPosition-b.gridPosition).map((row) => <tr key={row.driverId}><td>{row.gridPosition}</td><td>{row.driverName}</td><td>{row.bestLapSeconds.toFixed(3)}s</td></tr>)}</tbody></table></div></article>
           {lastRace.sprint && <article className="career-panel wide-panel"><small>SPRINT CLASSIFICATION · {lastRace.sprintLaps} LAPS</small><h2>Sprint result</h2><div className="table-scroll"><table className="career-table"><thead><tr><th>POS</th><th>DRIVER</th><th>TIME</th><th>POINTS</th></tr></thead><tbody>{[...lastRace.sprint.classification].sort((a,b)=>a.position-b.position).slice(0,12).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{row.cumulativeTimeSeconds.toFixed(3)}s</td><td>{calculateSprintRacePoints(row.position)}</td></tr>)}</tbody></table></div></article>}
