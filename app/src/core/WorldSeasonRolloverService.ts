@@ -325,7 +325,7 @@ async function prepareAiRoster(
       // If the existing market cannot fill the grid, create source-distributed rookies
       // and negotiate with them using the same contract rules as other free agents.
       if (seatCount < 2 && n(team, "cash") >= 0) {
-        for (let attempt = 0; attempt < 20 && seatCount < 2; attempt += 1) {
+        for (let attempt = 0; attempt < 100 && seatCount < 2; attempt += 1) {
           const driverId = await generateSeasonFreeAgentDriver(database, {
             careerId: input.careerId,
             tier: tier as Exclude<TierId, 6>,
