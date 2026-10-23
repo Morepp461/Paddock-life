@@ -523,6 +523,21 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_team_division_history_career ON team_division_history(career_id, season, team_id);
     `,
   },
+  {
+    version: 11,
+    description: "track idempotent world season transition steps",
+    sql: `
+      CREATE TABLE world_transition_steps (
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        step TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (career_id, season, step)
+      );
+      CREATE INDEX idx_world_transition_steps_season ON world_transition_steps(career_id, season, completed_at);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
