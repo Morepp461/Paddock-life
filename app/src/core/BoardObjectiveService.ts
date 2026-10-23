@@ -307,17 +307,34 @@ export async function createManagerJobOffers(
      ORDER BY t.division_id, points ASC, wins ASC, t.team_id;`,
     [input.completedSeason, input.careerId, String(playerTeam.team_id), ...targetTiers.map((tier) => "T" + tier), managerReputation],
   );
-  const ranked = candidates.map((row) => ({ ...row, tier: asTier(row.division_id) }));
+  type JobCandidate = {
+    team_id: string;
+    division_id: string;
+    reputation: number;
+    personality: string;
+    points: number;
+    wins: number;
+    tier: TierId;
+    rank?: number;
+  };
+  const ranked: JobCandidate[] = candidates.map((row) => ({
+    team_id: String(row.team_id),
+    division_id: String(row.division_id),
+    reputation: num(row, "reputation"),
+    personality: String(row.personality ?? ""),
+    points: num(row, "points"),
+    wins: num(row, "wins"),
+    tier: asTier(row.division_id),
+  }));
   for (const tier of targetTiers) {
     const inTier = ranked.filter((row) => row.tier === tier).sort((a, b) =>
-      num(a, "points") - num(b, "points") || num(a, "wins") - num(b, "wins") || String(a.team_id).localeCompare(String(b.team_id)));
-    inTier.forEach((row, index) => { (row as { rank?: number }).rank = index + 1; });
+      a.points - b.points || a.wins - b.wins || a.team_id.localeCompare(b.team_id));
+    inTier.forEach((row, index) => { row.rank = index + 1; });
   }
   const eligible = ranked
-    .filter((row) => Number((row as { rank?: number }).rank ?? 99) >= 7 || String(row.personality).toLowerCase().includes("championship"))
+    .filter((row) => (row.rank ?? 99) >= 7 || row.personality.toLowerCase().includes("championship"))
     .sort((a, b) =>
-      ((a as { rank?: number }).rank ?? 99) - ((b as { rank?: number }).rank ?? 99) ||
-      String(a.team_id).localeCompare(String(b.team_id)),
+      (a.rank ?? 99) - (b.rank ?? 99) || a.team_id.localeCompare(b.team_id),
     )
     .slice(0, 3);
 
