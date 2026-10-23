@@ -48,6 +48,7 @@ describe("atomic career world generation", () => {
       expect(await database.query("SELECT COUNT(*) AS count FROM finances;")).toEqual([{ count: 144 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 270 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND gender IN ('male', 'female');", [result.careerId])).toEqual([{ count: 270 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND created_season = 1;", [result.careerId])).toEqual([{ count: 270 }]);
       expect(await database.query("SELECT COUNT(DISTINCT lower(name)) AS count FROM drivers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 270 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND is_academy_driver = 1;", [result.careerId])).toEqual([{ count: 96 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM races;")).toEqual([{ count: result.racesScheduled }]);
