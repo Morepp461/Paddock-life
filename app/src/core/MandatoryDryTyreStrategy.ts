@@ -1,5 +1,5 @@
-import { TIER_CONFIG, type TierId } from "./GameConfig";
-import { calculateWearPerLap, calculateWearPenaltySeconds, getCompoundPaceResult, type DryTyreCompound } from "./TyreEngine";
+import { TIER_CONFIG, type DryTyreCompound, type TierId } from "./GameConfig";
+import { calculateWearPerLap, calculateWearPenaltySeconds, getCompoundPaceResult } from "./TyreEngine";
 
 export interface MandatoryDryStrategyInput {
   readonly tier: TierId;
