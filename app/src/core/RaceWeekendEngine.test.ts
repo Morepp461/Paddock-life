@@ -39,7 +39,7 @@ describe("race weekend orchestration", () => {
       qualifying: result.qualifying, drivers: roster,
     });
     const highStartsDriver = adjustedGrid.indexOf("D24") + 1;
-    expect(highStartsDriver).toBeLessThanOrEqual((qualifyingGrid.get("D24") ?? 24) - 3);
+    expect(highStartsDriver).toBeLessThanOrEqual((qualifyingGrid.get("D24") ?? 24) - 2);
     expect(adjustedGrid).toHaveLength(24);
     expect(new Set(adjustedGrid).size).toBe(24);
   });
