@@ -28,10 +28,10 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "driver_retirement_events", "staff_retirement_events", "driver_loans",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "driver_retirement_events", "staff_retirement_events", "driver_loans", "game_config", "car_component_service",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }]);
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");
@@ -60,6 +60,12 @@ describe("local schema migrations", () => {
     const loanColumns = await database.query("PRAGMA table_info(driver_loans);");
     expect(loanColumns.map((column) => column.name)).toContain("owner_team_id");
     expect(loanColumns.map((column) => column.name)).toContain("loan_team_id");
+    const gameConfigColumns = await database.query("PRAGMA table_info(game_config);");
+    expect(gameConfigColumns.map((column) => column.name)).toContain("source_document");
+    const componentServiceColumns = await database.query("PRAGMA table_info(car_component_service);");
+    expect(componentServiceColumns.map((column) => column.name)).toContain("races_since_reset");
+    expect(await database.query("SELECT COUNT(*) AS count FROM game_config;")).toEqual([{ count: 31 }]);
+    expect(await database.query("SELECT COUNT(*) AS count FROM car_component_service;")).toEqual([{ count: 0 }]);
   });
 
   it("enforces documented career mode and tier constraints", async () => {

@@ -695,6 +695,89 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         ON division_promotion_offers(career_id, team_id, status, season);
     `,
   },
+  {
+    version: 19,
+    description: "add source-traceable simulation configuration and known constants",
+    sql: `
+      CREATE TABLE game_config (
+        config_key TEXT NOT NULL CHECK (length(trim(config_key)) > 0),
+        scope TEXT NOT NULL DEFAULT 'global' CHECK (scope IN ('global', 'tier', 'circuit')),
+        scope_id TEXT NOT NULL DEFAULT 'global' CHECK (length(trim(scope_id)) > 0),
+        value_json TEXT NOT NULL CHECK (json_valid(value_json)),
+        source_document TEXT NOT NULL CHECK (length(trim(source_document)) > 0),
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (config_key, scope, scope_id),
+        CHECK (
+          (scope = 'global' AND scope_id = 'global') OR
+          (scope IN ('tier', 'circuit') AND scope_id <> 'global')
+        )
+      );
+      CREATE INDEX idx_game_config_scope ON game_config(scope, scope_id);
+      INSERT INTO game_config (config_key, scope, scope_id, value_json, source_document) VALUES
+        ('pit.lane_speed_mps', 'global', 'global', '22.2', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.stationary_mean_seconds', 'tier', '1', '2.4', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.stationary_jitter_seconds', 'tier', '1', '0.5', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.stationary_mean_seconds', 'tier', '4', '3.2', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.stationary_jitter_seconds', 'tier', '4', '0.9', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.fixed_total_loss_seconds', 'tier', '5', '20', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.crew_error_probability_min', 'global', 'global', '0.02', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.crew_error_probability_max', 'global', 'global', '0.10', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.unsafe_release_probability_min', 'global', 'global', '0.01', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('pit.unsafe_release_probability_max', 'global', 'global', '0.05', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('neutralization.safety_car_pace_multiplier', 'global', 'global', '1.4', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('neutralization.safety_car_gap_compression_seconds', 'global', 'global', '1', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('neutralization.safety_car_pit_lane_time_reduction', 'global', 'global', '0.4', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('neutralization.vsc_pace_multiplier', 'global', 'global', '1.35', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('neutralization.vsc_pit_lane_time_reduction', 'global', 'global', '0.35', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.stress_aggression_factor', 'global', 'global', '0.4', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.stress_abrasion_factor', 'global', 'global', '0.3', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.age_factor_step', 'global', 'global', '0.05', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.age_factor_cap', 'global', 'global', '1.5', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.base_failure_rate.engine', 'global', 'global', '0.1', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.base_failure_rate.gearbox', 'global', 'global', '0.07', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.base_failure_rate.brake', 'global', 'global', '0.05', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.base_failure_rate.suspension', 'global', 'global', '0.05', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('reliability.base_failure_rate.electronics', 'global', 'global', '0.07', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('incident.outcome_weight.lock-up', 'global', 'global', '54', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('incident.outcome_weight.spin', 'global', 'global', '22', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('incident.outcome_weight.minor-collision', 'global', 'global', '13', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('incident.outcome_weight.crash', 'global', 'global', '9', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('incident.outcome_weight.fatal-incident', 'global', 'global', '2', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('form.delta_seconds_per_modifier', 'global', 'global', '-0.05', '02_Simulation_Rules_Addendum_v1.docx'),
+        ('form.max_change_per_race', 'global', 'global', '0.4', '02_Simulation_Rules_Addendum_v1.docx');
+    `,
+  },
+  {
+    version: 20,
+    description: "persist per-component reliability service age",
+    sql: `
+      CREATE TABLE car_component_service (
+        car_id TEXT NOT NULL REFERENCES cars(car_id) ON DELETE CASCADE,
+        component TEXT NOT NULL CHECK (component IN ('engine', 'gearbox', 'brake', 'suspension', 'electronics')),
+        races_since_reset INTEGER NOT NULL DEFAULT 0 CHECK (races_since_reset >= 0),
+        last_service_season INTEGER CHECK (last_service_season IS NULL OR last_service_season >= 1),
+        last_service_round INTEGER CHECK (last_service_round IS NULL OR last_service_round >= 1),
+        PRIMARY KEY (car_id, component)
+      );
+      INSERT INTO car_component_service (car_id, component)
+        SELECT car_id, 'engine' FROM cars
+        UNION ALL SELECT car_id, 'gearbox' FROM cars
+        UNION ALL SELECT car_id, 'brake' FROM cars
+        UNION ALL SELECT car_id, 'suspension' FROM cars
+        UNION ALL SELECT car_id, 'electronics' FROM cars;
+      CREATE TRIGGER initialize_car_component_service
+      AFTER INSERT ON cars
+      BEGIN
+        INSERT INTO car_component_service (car_id, component) VALUES
+          (NEW.car_id, 'engine'),
+          (NEW.car_id, 'gearbox'),
+          (NEW.car_id, 'brake'),
+          (NEW.car_id, 'suspension'),
+          (NEW.car_id, 'electronics');
+      END;
+      CREATE INDEX idx_component_service_age ON car_component_service(component, races_since_reset);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
