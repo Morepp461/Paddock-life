@@ -9,7 +9,6 @@ import { planMandatoryDryTwoCompoundStrategy } from "../core/MandatoryDryTyreStr
 import { availableTyreCompounds } from "../core/RaceTyreSelection";
 
 const CONDITIONS: readonly TrackCondition[] = ["dry", "damp", "wet", "heavy-wet"];
-const COMPOUNDS: readonly TyreCompound[] = ["soft", "medium", "hard", "intermediate", "wet"];
 
 type TestCircuit = { id: string; name: string; country: string; lengthKm: number; standardLaps: number; estimatedLapSeconds: number; abrasion: number };
 
