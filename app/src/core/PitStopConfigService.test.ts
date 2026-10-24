@@ -26,6 +26,8 @@ describe("source-backed pit stop configuration", () => {
       stationaryJitterRangeSeconds: 0.5,
       crewErrorProbabilityBounds: { minimum: 0.02, maximum: 0.1 },
       unsafeReleaseProbabilityBounds: { minimum: 0.01, maximum: 0.05 },
+      safetyCarPitLaneTimeReduction: 0.4,
+      vscPitLaneTimeReduction: 0.35,
     });
     expect(config.unresolvedKeys).toContain("pit.crew_error_probability_by_mechanic_skill");
     expect(config.unresolvedKeys).toContain("pit.unsafe_release_delay_seconds");
