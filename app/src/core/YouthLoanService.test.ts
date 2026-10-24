@@ -128,4 +128,40 @@ describe("one-season youth driver loans", () => {
       await database.close();
     }
   });
+
+  it("rejects race drivers and loans to a higher division", async () => {
+    const database = await makeDatabase();
+    try {
+      const career = await generateCareerWorld(database, {
+        managerName: "Mata Dewa",
+        managerCountryCode: "IDN",
+        difficulty: "normal",
+        path: "takeover",
+        worldSeed: "youth-loan-source-rules-test",
+        takeoverTeamId: "D3-01",
+      }, { fetcher: seedFetcher, managerGender: "male" });
+      const ownerTeamId = await resolveTeamId(database, career.careerId, "D3-01");
+      const lowerDivisionTeamId = await resolveTeamId(database, career.careerId, "D4-01");
+      const higherDivisionTeamId = await resolveTeamId(database, career.careerId, "D2-01");
+      const raceDriver = (await database.query(
+        "SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1 AND d.is_retired = 0 AND d.is_academy_driver = 0 ORDER BY d.driver_id LIMIT 1;",
+        [ownerTeamId],
+      ))[0];
+      if (!raceDriver) throw new Error("No owner race driver found.");
+      await expect(createYouthDriverLoan(database, {
+        careerId: career.careerId, driverId: String(raceDriver.driver_id), ownerTeamId, loanTeamId: lowerDivisionTeamId, season: 1,
+      })).rejects.toThrow("Hanya driver Driver Academy");
+
+      const academyDriver = (await database.query(
+        "SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1 AND d.is_retired = 0 AND d.is_academy_driver = 1 ORDER BY d.driver_id LIMIT 1;",
+        [ownerTeamId],
+      ))[0];
+      if (!academyDriver) throw new Error("No owner academy driver found.");
+      await expect(createYouthDriverLoan(database, {
+        careerId: career.careerId, driverId: String(academyDriver.driver_id), ownerTeamId, loanTeamId: higherDivisionTeamId, season: 1,
+      })).rejects.toThrow("divisi yang lebih rendah");
+    } finally {
+      await database.close();
+    }
+  });
 });
