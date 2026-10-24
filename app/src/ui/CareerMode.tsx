@@ -1147,7 +1147,24 @@ export default function CareerMode() {
           ));
         }}
       />}
-      {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
+      {tab === "staff" && <div className="career-grid">
+        <section className="career-panel wide-panel">
+          <div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div>
+          <div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY / SEASON</th><th>CONTRACT END</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td><td>{field(member, "contract_end") ? "S" + field(member, "contract_end") : "Open-ended"}</td></tr>)}</tbody></table></div>
+          <p className="muted-text">Gaji staf yang dikontrak dibebankan per round melalui finance ledger. Kontrak berakhir otomatis setelah season terakhir yang dipilih.</p>
+        </section>
+        <section className="career-panel wide-panel">
+          <div className="panel-title"><div><small>STAFF MARKET</small><h2>Hire free-agent staff</h2></div><span>{dashboard.staffMarket.length} candidates</span></div>
+          <div className="form-grid">
+            <label>Contract end season
+              <input type="number" min={numberField(dashboard.career, "current_season", 1)} max="99" step="1" value={Math.max(numberField(dashboard.career, "current_season", 1), Number(staffContractEnd) || 1)} onChange={(event) => setStaffContractEnd(event.target.value)} />
+            </label>
+          </div>
+          {staffError && <p className="inline-error" role="alert">{staffError}</p>}
+          {dashboard.staffMarket.length ? <div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>POTENTIAL</th><th>SALARY / SEASON</th><th>ACTION</th></tr></thead><tbody>{dashboard.staffMarket.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{numberField(member, "potential").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td><td><button className="mini-action accept" disabled={staffBusy || numberField(dashboard.team, "cash") < 0} onClick={() => void hireStaff(field(member, "staff_id"))}>{staffBusy ? "Processing…" : "Hire"}</button></td></tr>)}</tbody></table></div> : <p className="muted-text">Tidak ada kandidat staf free agent yang tersedia saat ini.</p>}
+          {numberField(dashboard.team, "cash") < 0 && <p className="inline-error">Tim tidak dapat merekrut saat saldo kas negatif.</p>}
+        </section>
+      </div>}
       {tab === "development" && <section className="career-grid">
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>R&D / CAR DEVELOPMENT</small><h2>Build the next upgrade</h2></div><span>{dashboard.developmentProjects.filter((project) => field(project, "status") === "active").length}/{Math.ceil(numberField(team, "rnd_level", 1) / 2)} active slots</span></div>
