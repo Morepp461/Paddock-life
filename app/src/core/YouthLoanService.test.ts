@@ -24,6 +24,15 @@ function seedFetcher(input: RequestInfo | URL): Promise<Response> {
   }
 }
 
+async function resolveTeamId(database: SqlJsDatabase, careerId: string, poolTeamId: string): Promise<string> {
+  const rows = await database.query(
+    "SELECT team_id FROM teams WHERE career_id = ? AND pool_team_id = ?;",
+    [careerId, poolTeamId],
+  );
+  if (!rows[0]) throw new Error("Generated team not found for pool team " + poolTeamId);
+  return String(rows[0].team_id);
+}
+
 describe("one-season youth driver loans", () => {
   it("creates a full-season loan, splits annual payroll 80/20, and expires idempotently", async () => {
     const database = await makeDatabase();
@@ -36,8 +45,8 @@ describe("one-season youth driver loans", () => {
         worldSeed: "youth-loan-lifecycle-test",
         takeoverTeamId: "D3-01",
       }, { fetcher: seedFetcher, managerGender: "male" });
-      const ownerTeamId = "D3-01";
-      const loanTeamId = "D3-02";
+      const ownerTeamId = await resolveTeamId(database, career.careerId, "D3-01");
+      const loanTeamId = await resolveTeamId(database, career.careerId, "D3-02");
       const driverRows = await database.query(
         `SELECT d.driver_id, dc.salary
          FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id
@@ -102,13 +111,16 @@ describe("one-season youth driver loans", () => {
         worldSeed: "youth-loan-validation-test",
         takeoverTeamId: "D3-01",
       }, { fetcher: seedFetcher, managerGender: "male" });
+      const ownerTeamId = await resolveTeamId(database, career.careerId, "D3-01");
+      const loanTeamId = await resolveTeamId(database, career.careerId, "D3-02");
       const driver = (await database.query(
-        "SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = 'D3-01' AND dc.start_season <= 1 AND dc.end_season >= 1 AND d.is_retired = 0 AND d.is_academy_driver = 0 ORDER BY d.driver_id LIMIT 1;",
+        "SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1 AND d.is_retired = 0 AND d.is_academy_driver = 0 ORDER BY d.driver_id LIMIT 1;",
+        [ownerTeamId],
       ))[0];
       if (!driver) throw new Error("No eligible owner driver.");
       await database.run("UPDATE career SET current_race = 2 WHERE career_id = ?;", [career.careerId]);
       await expect(createYouthDriverLoan(database, {
-        careerId: career.careerId, driverId: String(driver.driver_id), ownerTeamId: "D3-01", loanTeamId: "D3-02", season: 1,
+        careerId: career.careerId, driverId: String(driver.driver_id), ownerTeamId, loanTeamId, season: 1,
       })).rejects.toThrow("sebelum race pertama");
     } finally {
       await database.close();
