@@ -8,6 +8,7 @@ import { calculateWeatherAdaptation } from "../core/WeatherEngine";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
+import { incrementComponentServiceAgeForRace } from "../core/CarComponentService";
 import { loadCareerRaceRoster } from "../core/CareerRaceRosterService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
@@ -366,6 +367,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     if (tier === playerTier) await advanceCareerDevelopmentProjectsAfterRace(database, {
       careerId, tier, season, round: Number(race.round),
     });
+    await incrementComponentServiceAgeForRace(database, { careerId, tier, season });
     await database.run("UPDATE races SET status = 'completed' WHERE race_id = ? AND status = 'scheduled';", [String(race.race_id)]);
     if (tier === playerTier) await database.run("UPDATE career SET current_race = ?, updated_at = CURRENT_TIMESTAMP WHERE career_id = ?;", [Number(race.round) + 1, careerId]);
   });
