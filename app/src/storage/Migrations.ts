@@ -778,6 +778,25 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_component_service_age ON car_component_service(component, races_since_reset);
     `,
   },
+  {
+    version: 21,
+    description: "audit staff hiring and contract expiry",
+    sql: `
+      CREATE TABLE staff_contract_events (
+        event_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        staff_id TEXT NOT NULL REFERENCES staff(staff_id) ON DELETE CASCADE,
+        team_id TEXT REFERENCES teams(team_id) ON DELETE SET NULL,
+        event_type TEXT NOT NULL CHECK (event_type IN ('hired', 'expired')),
+        season INTEGER NOT NULL CHECK (season >= 1),
+        salary INTEGER NOT NULL CHECK (salary >= 0),
+        contract_end INTEGER CHECK (contract_end IS NULL OR contract_end >= 1),
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (career_id, staff_id, event_type, season)
+      );
+      CREATE INDEX idx_staff_contract_events_team ON staff_contract_events(career_id, team_id, season);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
