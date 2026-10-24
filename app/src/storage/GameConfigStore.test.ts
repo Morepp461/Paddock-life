@@ -67,6 +67,9 @@ describe("source-traceable game config store", () => {
     await expect(getGameConfig<number>(database, "pit.stationary_mean_seconds", {
       scope: "tier", scopeId: "3",
     })).resolves.toBeNull();
+    await expect(requireGameConfigNumber(database, "pit.stationary_mean_seconds", {
+      scope: "tier", scopeId: "2",
+    })).rejects.toThrow("Konfigurasi simulasi wajib belum tersedia");
     await expect(getGameConfig<number>(database, "neutralization.vsc_probability", {
       scope: "global", scopeId: "global",
     })).resolves.toBeNull();
