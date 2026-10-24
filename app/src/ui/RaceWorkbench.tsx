@@ -6,9 +6,9 @@ import { hashSeed } from "../core/RandomDistributions";
 import type { TrackCondition, TyreCompound } from "../core/TyreEngine";
 import { validateCircuitSeed } from "../seed/SeedDataLoader";
 import { planMandatoryDryTwoCompoundStrategy } from "../core/MandatoryDryTyreStrategy";
+import { availableTyreCompounds } from "../core/RaceTyreSelection";
 
 const CONDITIONS: readonly TrackCondition[] = ["dry", "damp", "wet", "heavy-wet"];
-const COMPOUNDS: readonly TyreCompound[] = ["soft", "medium", "hard", "intermediate", "wet"];
 
 type TestCircuit = { id: string; name: string; country: string; lengthKm: number; standardLaps: number; estimatedLapSeconds: number; abrasion: number };
 
@@ -56,6 +56,7 @@ export default function RaceWorkbench() {
   const [error, setError] = useState("");
   const [selectedLap, setSelectedLap] = useState(8);
   const [runCount, setRunCount] = useState(0);
+  const availableCompounds = useMemo(() => availableTyreCompounds(tier, condition), [tier, condition]);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +91,12 @@ export default function RaceWorkbench() {
   }, [selectedCircuit?.id, tier]);
 
   const drivers = useMemo(() => makeTestDrivers(tier, seed, compound), [tier, seed, compound]);
+  useEffect(() => {
+    if (availableCompounds.length > 0 && !availableCompounds.includes(compound)) {
+      setCompound(availableCompounds[0]!);
+      setResult(null);
+    }
+  }, [availableCompounds, compound]);
   const visibleLap = result ? Math.min(selectedLap, result.totalLaps) : 0;
   const lapRows = result?.laps[visibleLap - 1] ?? [];
 
@@ -164,7 +171,7 @@ export default function RaceWorkbench() {
         <div className="field-grid">
           <label>Tier
             <select value={tier} onChange={(event) => { setTier(Number(event.target.value) as TierId); setResult(null); }}>
-              {[1, 2, 3, 4].map((value) => <option key={value} value={value}>Tier {value} · {TIER_CONFIG[value as TierId].name}</option>)}
+              {[1, 2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>Tier {value} · {TIER_CONFIG[value as TierId].name}</option>)}
             </select>
           </label>
           <label>Circuit · source seed
@@ -179,7 +186,7 @@ export default function RaceWorkbench() {
           </label>
           <label>Tyre compound
             <select value={compound} onChange={(event) => { setCompound(event.target.value as TyreCompound); setResult(null); }}>
-              {COMPOUNDS.map((value) => <option key={value} value={value}>{value}</option>)}
+              {availableCompounds.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
           <label>Race laps (min. 8)
@@ -200,7 +207,7 @@ export default function RaceWorkbench() {
         </div>
         <div className="workbench-actions">
           <button type="button" onClick={runSimulation} disabled={loadingCircuits || !selectedCircuit || !seed.trim() || !Number.isInteger(laps) || laps < 8 || laps > 100 || !Number.isFinite(temperature)}>Run simulation</button>
-          <span>{loadingCircuits ? "Loading circuit seed…" : "Grid: " + TIER_CONFIG[tier].gridSize + " test drivers · season 1 / round 1"}</span>
+          <span>{loadingCircuits ? "Loading circuit seed…" : "Grid: " + TIER_CONFIG[tier].gridSize + " test drivers · season 1 / round 1 · Tier 5 pit is emergency-only; Tier 6 has no pit stops"}</span>
         </div>
         {seedLoadError && <p className="error-message" role="alert">{seedLoadError}</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
