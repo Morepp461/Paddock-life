@@ -5,6 +5,7 @@ import { calculateDriverAskingSalary, generateDriverDemandFactor } from "./Contr
 import { offerDriverContract } from "./CareerContractService";
 import { hashSeed } from "./RandomDistributions";
 import { evaluateAgeAndRetirement, evaluateStaffCandidateOutcome, hasTwoSeasonsWithoutTeam } from "./AgeAndRetireEngine";
+import { expireStaffContractsInTransaction } from "./StaffContractService";
 import { generateSeasonFreeAgentDriver, generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
 import { createBoardObjectivesForTeam, createManagerJobOffers, resolveBoardObjectivesForSeason } from "./BoardObjectiveService";
@@ -601,6 +602,10 @@ export async function rollWorldSeasonForward(
       } else {
         await database.run("UPDATE drivers SET age = age + 1 WHERE career_id = ? AND is_retired = 0;", [input.careerId]);
       }
+      await expireStaffContractsInTransaction(database, {
+        careerId: input.careerId,
+        newSeason: nextSeason,
+      });
       const staffRows = await database.query(
         "SELECT staff_id, age FROM staff WHERE career_id = ? AND is_retired = 0 ORDER BY staff_id;",
         [input.careerId],
