@@ -70,7 +70,7 @@ describe("one-season youth driver loans", () => {
       await database.run("UPDATE drivers SET is_academy_driver = 1 WHERE driver_id = ?;", [String(borrowerDriver[0].driver_id)]);
 
       const ownerBefore = await calculateTeamRacePayrollCosts(database, { teamId: ownerTeamId, season: 1, tier: 3, round: 1 });
-      const borrowerBefore = await calculateTeamRacePayrollCosts(database, { teamId: loanTeamId, season: 1, tier: 3, round: 1 });
+      const borrowerBefore = await calculateTeamRacePayrollCosts(database, { teamId: loanTeamId, season: 1, tier: 4, round: 1 });
       const loan = await createYouthDriverLoan(database, {
         careerId: career.careerId,
         driverId: String(driver.driver_id),
