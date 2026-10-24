@@ -4,6 +4,7 @@ import { simulatePitStop, type PitStopInput } from "./PitStopEngine";
 const base: PitStopInput = {
   tier: 1,
   pitLaneLengthMeters: 420,
+  pitLaneSpeedMetersPerSecond: 22.2,
   mechanicSkillAverage: 80,
   stationarySeconds: 2.4,
   stationaryJitterSeconds: 0.1,
@@ -34,6 +35,15 @@ describe("pit stop loss model", () => {
     expect(tier5.pitLaneSeconds).toBe(20);
     expect(tier5.crewErrorOccurred).toBe(false);
     expect(() => simulatePitStop({ ...base, tier: 6 })).toThrow("tidak tersedia");
+  });
+
+  it("uses explicit pit-lane speed and applies SC/VSC pit-lane reductions only to lane time", () => {
+    const normal = simulatePitStop({ ...base, pitLaneSpeedMetersPerSecond: 21 });
+    const neutralized = simulatePitStop({ ...base, pitLaneTimeReduction: 0.4 });
+    expect(normal.pitLaneSeconds).toBeCloseTo(420 / 21);
+    expect(neutralized.pitLaneSeconds).toBeCloseTo((420 / 22.2) * 0.6);
+    expect(neutralized.stationarySeconds).toBeCloseTo(base.stationarySeconds + base.stationaryJitterSeconds);
+    expect(() => simulatePitStop({ ...base, pitLaneTimeReduction: 1.1 })).toThrow("rentang 0–1");
   });
 
   it("is deterministic for the same race event", () => {
