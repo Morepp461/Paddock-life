@@ -41,6 +41,7 @@ describe("source-backed pit stop configuration", () => {
       safetyCarPitLaneTimeReduction: 0.4,
       vscPitLaneTimeReduction: 0.35,
     });
+    expect(config.unresolvedKeys).toContain("pit.crew_error_probability_by_mechanic_skill");
   });
 
   it("fails closed when Tier 2 stationary time is not in the source config", async () => {
