@@ -797,6 +797,28 @@ export default function CareerMode() {
     }
   }
 
+  async function hireStaff(staffId: string) {
+    if (!database || !activeSave || !dashboard) return;
+    const currentSeason = numberField(dashboard.career, "current_season", 1);
+    setStaffBusy(true);
+    setStaffError("");
+    try {
+      await hireFreeAgentStaff(database, {
+        careerId: activeSave.careerId,
+        teamId: String(dashboard.team.team_id),
+        staffId,
+        currentSeason,
+        contractEndSeason: Math.max(currentSeason, Number(staffContractEnd) || currentSeason),
+      });
+      await persistSnapshot(database, activeSave, "contract-signed", field(dashboard.career, "game_mode") === "sandbox");
+      setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
+    } catch (caught) {
+      setStaffError(caught instanceof Error ? caught.message : "Perekrutan staf gagal diproses.");
+    } finally {
+      setStaffBusy(false);
+    }
+  }
+
   async function settleSeason() {
     if (!database || !activeSave || !dashboard) return;
     setSettlingSeason(true); setSettlementError(""); setSeasonProgress("Preparing world season…");
