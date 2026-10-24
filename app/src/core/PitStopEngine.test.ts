@@ -48,7 +48,7 @@ describe("pit stop loss model", () => {
     const neutralized = simulatePitStop({ ...base, pitLaneTimeReduction: 0.4 });
     expect(normal.pitLaneSeconds).toBeCloseTo(420 / 21);
     expect(neutralized.pitLaneSeconds).toBeCloseTo((420 / 22.2) * 0.6);
-    expect(neutralized.stationarySeconds).toBeCloseTo(base.stationarySeconds + base.stationaryJitterSeconds);
+    expect(neutralized.stationarySeconds).toBeCloseTo(base.stationarySeconds! + base.stationaryJitterSeconds!);
     expect(() => simulatePitStop({ ...base, pitLaneTimeReduction: 1.1 })).toThrow("rentang 0–1");
   });
 
