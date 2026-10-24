@@ -197,10 +197,11 @@ export default function RaceWorkbench() {
               {CONDITIONS.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
-          <label>Tyre compound
-            <select value={compound} onChange={(event) => { setCompound(event.target.value as TyreCompound); setResult(null); }}>
+          <label>Tyre compound {tier <= 3 && condition === "dry" ? "· auto-planned" : ""}
+            <select value={compound} disabled={tier <= 3 && condition === "dry"} onChange={(event) => { setCompound(event.target.value as TyreCompound); setResult(null); }}>
               {availableCompounds.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
+            {tier <= 3 && condition === "dry" && <small>The mandatory two-compound planner chooses both compounds and the pit lap for this QA run.</small>}
           </label>
           <label>Race laps (min. 8)
             <input type="number" min="8" max="100" step="1" value={laps} onChange={(event) => { setLaps(Number(event.target.value)); setResult(null); }} />
