@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { IDatabase, DatabaseRow } from "../storage/IDatabase";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { createYouthDriverLoan } from "../core/YouthLoanService";
@@ -22,7 +22,7 @@ function numberValue(row: DatabaseRow, key: string): number {
   return Number.isFinite(value) ? value : 0;
 }
 function cash(value: number): string {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value).replace("IDR", "¢p");
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(value) + " ¢p";
 }
 function tierFromDivision(value: string): TierId {
   return Number(value.replace(/^T/, "")) as TierId;
@@ -92,7 +92,7 @@ export default function YouthLoanPanel({ database, careerId, ownerTeamId, ownerT
     if (!compatibleTeams.some((team) => team.team_id === loanTeamId)) setLoanTeamId(compatibleTeams[0]?.team_id ?? "");
   }, [compatibleTeams, loanTeamId]);
 
-  async function submitLoan(event: React.FormEvent<HTMLFormElement>) {
+  async function submitLoan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || !driverId || !loanTeamId) return;
     setBusy(true); setError(""); setNotice("");
