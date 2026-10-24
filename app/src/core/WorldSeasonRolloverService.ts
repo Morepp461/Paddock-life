@@ -8,6 +8,7 @@ import { evaluateAgeAndRetirement, evaluateStaffCandidateOutcome, hasTwoSeasonsW
 import { generateSeasonFreeAgentDriver, generateTier6RookieDrivers } from "../seed/CareerWorldGenerator";
 import { transitionWorldAfterSeason } from "./WorldSeasonTransitionService";
 import { createBoardObjectivesForTeam, createManagerJobOffers, resolveBoardObjectivesForSeason } from "./BoardObjectiveService";
+import { expireYouthDriverLoans } from "./YouthLoanService";
 
 type Tier = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -533,6 +534,10 @@ export async function rollWorldSeasonForward(
       );
     });
   }
+  await expireYouthDriverLoans(database, {
+    careerId: input.careerId,
+    completedSeason: input.completedSeason,
+  });
   const roster = await prepareAiRoster(database, {
     careerId: input.careerId,
     worldSeed: String(career.world_seed),

@@ -22,13 +22,34 @@ export async function calculateTeamRacePayrollCosts(
   // driver/staff salary budgets to it, so its payroll expense remains zero.
   if (input.tier === 6) return { driverPayroll: 0, staffPayroll: 0 };
 
-  const [driverRows, staffRows] = await Promise.all([
+  const [driverRows, loanedInRows, staffRows] = await Promise.all([
     database.query(
-      `SELECT COALESCE(SUM(dc.salary), 0) AS total
+      `SELECT COALESCE(SUM(CASE WHEN EXISTS (
+          SELECT 1 FROM driver_loans l
+          WHERE l.career_id = d.career_id AND l.driver_id = d.driver_id
+            AND l.owner_team_id = dc.team_id AND l.status = 'active'
+            AND l.start_season <= ? AND l.end_season >= ?
+        ) THEN ROUND(dc.salary * 0.8) ELSE dc.salary END), 0) AS total
        FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id
        WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ?
-         AND d.is_retired = 0 AND d.is_academy_driver = 0;`,
-      [input.teamId, input.season, input.season],
+         AND d.is_retired = 0
+         AND (d.is_academy_driver = 0 OR EXISTS (
+           SELECT 1 FROM driver_loans l
+           WHERE l.career_id = d.career_id AND l.driver_id = d.driver_id
+             AND l.owner_team_id = dc.team_id AND l.status = 'active'
+             AND l.start_season <= ? AND l.end_season >= ?
+         ));`,
+      [input.season, input.season, input.teamId, input.season, input.season, input.season, input.season],
+    ),
+    database.query(
+      `SELECT COALESCE(SUM(ROUND(dc.salary * 0.2)), 0) AS total
+       FROM driver_loans l
+       JOIN driver_contracts dc ON dc.driver_id = l.driver_id AND dc.team_id = l.owner_team_id
+         AND dc.start_season <= ? AND dc.end_season >= ?
+       JOIN drivers d ON d.driver_id = l.driver_id
+       WHERE l.loan_team_id = ? AND l.status = 'active' AND l.start_season <= ? AND l.end_season >= ?
+         AND d.is_retired = 0;`,
+      [input.season, input.season, input.teamId, input.season, input.season],
     ),
     database.query(
       `SELECT COALESCE(SUM(salary), 0) AS total
@@ -37,7 +58,7 @@ export async function calculateTeamRacePayrollCosts(
       [input.teamId, input.season],
     ),
   ]);
-  const annualDriverPayroll = Number(driverRows[0]?.total ?? 0);
+  const annualDriverPayroll = Number(driverRows[0]?.total ?? 0) + Number(loanedInRows[0]?.total ?? 0);
   const annualStaffPayroll = Number(staffRows[0]?.total ?? 0);
   if (![annualDriverPayroll, annualStaffPayroll].every((value) => Number.isSafeInteger(value) && value >= 0)) {
     throw new Error("Payroll kontrak tim tidak valid.");

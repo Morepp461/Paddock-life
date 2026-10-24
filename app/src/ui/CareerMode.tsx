@@ -8,6 +8,7 @@ import { calculateWeatherAdaptation } from "../core/WeatherEngine";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
+import { loadCareerRaceRoster } from "../core/CareerRaceRosterService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
 import { transitionWorldAfterSeason } from "../core/WorldSeasonTransitionService";
@@ -35,6 +36,7 @@ import { exportSqliteSnapshot, restoreSqliteSnapshot } from "../storage/SqliteSn
 import { CapacitorSQLiteDatabase } from "../storage/CapacitorSQLiteDatabase";
 import type { IDatabase } from "../storage/IDatabase";
 import RaceWorkbench from "./RaceWorkbench";
+import YouthLoanPanel from "./YouthLoanPanel";
 import "./career-mode.css";
 
 type CatalogTeam = {
@@ -226,19 +228,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   );
   const race = raceRows[0];
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
-  const raceDrivers = await database.query(
-    `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.adaptability, d.tyre_management, d.aggression,
-      d.overtaking, d.defending, d.starts, t.team_id, t.is_player_team, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
-     FROM drivers d
-     JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-     JOIN teams t ON t.team_id = dc.team_id AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1 AND d.is_academy_driver = 0 AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
-     JOIN cars c ON c.team_id = t.team_id AND c.season = ?
-     ORDER BY t.team_id, d.driver_id;`,
-    [season, season, careerId, "T" + tier, TIER_CONFIG[tier].driverAge.min, TIER_CONFIG[tier].driverAge.max, season],
-  );
-  if (raceDrivers.length !== TIER_CONFIG[tier].gridSize) {
-    throw new Error("Grid race harus berisi " + TIER_CONFIG[tier].gridSize + " driver, tetapi ditemukan " + raceDrivers.length + ".");
-  }
+  const raceDrivers = await loadCareerRaceRoster(database, { careerId, season, tier });
   const trackCondition = parseTrackCondition(race.track_condition);
   if (!availableTyreCompounds(tier, trackCondition).includes(compound)) {
     throw new Error("Tyre compound tidak bisa digunakan pada kondisi lintasan ini.");
@@ -1116,6 +1106,18 @@ export default function CareerMode() {
           </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
         </article>
       </section>}
+      {tab === "roster" && <YouthLoanPanel
+        database={database!}
+        careerId={activeSave.careerId}
+        ownerTeamId={String(dashboard.team.team_id)}
+        ownerTier={numberField(dashboard.career, "current_division_tier", activeSave.tier) as TierId}
+        onChanged={async () => {
+          setDashboard(await loadDashboard(
+            database!, activeSave.careerId, String(dashboard.team.team_id),
+            numberField(dashboard.career, "current_division_tier", activeSave.tier) as TierId,
+          ));
+        }}
+      />}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "development" && <section className="career-grid">
         <article className="career-panel wide-panel">

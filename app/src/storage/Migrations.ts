@@ -649,6 +649,31 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     `,
   },
   {
+    version: 18,
+    description: "persist one-season youth driver loans and loan completion",
+    sql: `
+      CREATE TABLE driver_loans (
+        loan_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+        owner_team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        loan_team_id TEXT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
+        start_season INTEGER NOT NULL CHECK (start_season >= 1),
+        end_season INTEGER NOT NULL CHECK (end_season = start_season),
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CHECK (owner_team_id <> loan_team_id),
+        UNIQUE (career_id, driver_id, start_season)
+      );
+      CREATE UNIQUE INDEX idx_driver_loans_one_active
+        ON driver_loans(career_id, driver_id) WHERE status = 'active';
+      CREATE INDEX idx_driver_loans_owner_season
+        ON driver_loans(career_id, owner_team_id, start_season, status);
+      CREATE INDEX idx_driver_loans_borrower_season
+        ON driver_loans(career_id, loan_team_id, start_season, status);
+    `,
+  },
+  {
     version: 14,
     description: "persist player division unlock and promotion choices",
     sql: `
