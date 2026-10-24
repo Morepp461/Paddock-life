@@ -35,6 +35,7 @@ import { exportSqliteSnapshot, restoreSqliteSnapshot } from "../storage/SqliteSn
 import { CapacitorSQLiteDatabase } from "../storage/CapacitorSQLiteDatabase";
 import type { IDatabase } from "../storage/IDatabase";
 import RaceWorkbench from "./RaceWorkbench";
+import YouthLoanPanel from "./YouthLoanPanel";
 import "./career-mode.css";
 
 type CatalogTeam = {
@@ -1119,6 +1120,18 @@ export default function CareerMode() {
           </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
         </article>
       </section>}
+      {tab === "roster" && <YouthLoanPanel
+        database={database}
+        careerId={activeSave.careerId}
+        ownerTeamId={String(dashboard.team.team_id)}
+        ownerTier={numberField(dashboard.career, "current_division_tier", activeSave.tier) as TierId}
+        onChanged={async () => {
+          setDashboard(await loadDashboard(
+            database, activeSave.careerId, String(dashboard.team.team_id),
+            numberField(dashboard.career, "current_division_tier", activeSave.tier) as TierId,
+          ));
+        }}
+      />}
       {tab === "staff" && <section className="career-panel"><div className="panel-title"><div><small>OPERATIONS</small><h2>Team staff</h2></div><span>{dashboard.staff.length} staff</span></div><div className="table-scroll"><table className="career-table"><thead><tr><th>ROLE</th><th>NAME</th><th>AGE</th><th>SKILL</th><th>SALARY</th></tr></thead><tbody>{dashboard.staff.map((member) => <tr key={field(member, "staff_id")}><td>{field(member, "role")}</td><td>{field(member, "name")}</td><td>{field(member, "age")}</td><td>{numberField(member, "skill").toFixed(1)}</td><td>{formatCash(numberField(member, "salary"))}</td></tr>)}</tbody></table></div></section>}
       {tab === "development" && <section className="career-grid">
         <article className="career-panel wide-panel">
