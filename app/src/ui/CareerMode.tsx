@@ -1121,13 +1121,13 @@ export default function CareerMode() {
         </article>
       </section>}
       {tab === "roster" && <YouthLoanPanel
-        database={database}
+        database={database!}
         careerId={activeSave.careerId}
         ownerTeamId={String(dashboard.team.team_id)}
         ownerTier={numberField(dashboard.career, "current_division_tier", activeSave.tier) as TierId}
         onChanged={async () => {
           setDashboard(await loadDashboard(
-            database, activeSave.careerId, String(dashboard.team.team_id),
+            database!, activeSave.careerId, String(dashboard.team.team_id),
             numberField(dashboard.career, "current_division_tier", activeSave.tier) as TierId,
           ));
         }}
