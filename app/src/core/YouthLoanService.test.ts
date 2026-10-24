@@ -60,14 +60,14 @@ describe("one-season youth driver loans", () => {
       if (!driver) throw new Error("Owner team has no contracted academy driver.");
       await database.run("UPDATE drivers SET age = ? WHERE driver_id = ?;", [TIER_CONFIG[4].driverAge.min, String(driver.driver_id)]);
       const borrowerDriver = await database.query(
-        `SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id
+        `SELECT dc.contract_id, d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id
          WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1
            AND d.is_retired = 0 AND d.is_academy_driver = 0
          ORDER BY d.driver_id LIMIT 1;`,
         [loanTeamId],
       );
-      if (!borrowerDriver[0]) throw new Error("Borrower team has no driver to make a seat vacant.");
-      await database.run("UPDATE drivers SET is_academy_driver = 1 WHERE driver_id = ?;", [String(borrowerDriver[0].driver_id)]);
+      if (!borrowerDriver[0]) throw new Error("Borrower team has no driver contract to vacate.");
+      await database.run("DELETE FROM driver_contracts WHERE contract_id = ?;", [String(borrowerDriver[0].contract_id)]);
 
       const ownerBefore = await calculateTeamRacePayrollCosts(database, { teamId: ownerTeamId, season: 1, tier: 3, round: 1 });
       const borrowerBefore = await calculateTeamRacePayrollCosts(database, { teamId: loanTeamId, season: 1, tier: 4, round: 1 });
