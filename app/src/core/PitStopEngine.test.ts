@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { simulatePitStop } from "./PitStopEngine";
 
 const base = {
-  tier: 1,
+  tier: 1 as const,
   pitLaneLengthMeters: 420,
   pitLaneSpeedMetersPerSecond: 22.2,
   mechanicSkillAverage: 80,
