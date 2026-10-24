@@ -35,6 +35,12 @@ describe("pit stop loss model", () => {
     expect(tier5.pitLaneSeconds).toBe(20);
     expect(tier5.crewErrorOccurred).toBe(false);
     expect(() => simulatePitStop({ ...base, tier: 6 })).toThrow("tidak tersedia");
+    expect(simulatePitStop({
+      tier: 5, pitLaneLengthMeters: 0, worldSeed: "seed", season: 1, round: 1, driverId: "tier5-driver", stopNumber: 1,
+    }).totalLossSeconds).toBe(20);
+    expect(() => simulatePitStop({
+      tier: 1, pitLaneLengthMeters: 420, worldSeed: "seed", season: 1, round: 1, driverId: "missing-config", stopNumber: 1,
+    })).toThrow("Konfigurasi pit wajib belum tersedia");
   });
 
   it("uses explicit pit-lane speed and applies SC/VSC pit-lane reductions only to lane time", () => {
