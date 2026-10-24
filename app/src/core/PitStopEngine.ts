@@ -96,7 +96,7 @@ export function simulatePitStop(input: PitStopInput): PitStopResult {
   const random = new SeededRandom(hashPitSeed(input));
   const crewErrorOccurred = random.next() < input.crewErrorProbability;
   const unsafeReleaseOccurred = random.next() < input.unsafeReleaseProbability;
-  const pitLaneSeconds = (input.pitLaneLengthMeters / input.pitLaneSpeedMetersPerSecond) * (1 - pitLaneTimeReduction);
+  const pitLaneSeconds = (input.pitLaneLengthMeters / input.pitLaneSpeedMetersPerSecond) * (1 - (input.pitLaneTimeReduction ?? 0));
   const stationarySeconds = input.stationarySeconds + input.stationaryJitterSeconds;
   const crewErrorBaseSeconds = Math.max(0, (100 - input.mechanicSkillAverage) * 0.03 + input.crewErrorJitterSeconds);
   const crewErrorSeconds = crewErrorOccurred ? crewErrorBaseSeconds : 0;
