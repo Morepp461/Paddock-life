@@ -33,6 +33,16 @@ describe("source-backed pit stop configuration", () => {
     expect(config.unresolvedKeys).toContain("pit.unsafe_release_delay_seconds");
   });
 
+  it("resolves the documented Tier 4 stationary time and VSC pit-lane reduction", async () => {
+    const config = await resolvePitStopConfig(database, { tier: 4, pitLaneLengthMeters: 400 });
+    expect(config).toMatchObject({
+      stationarySeconds: 3.2,
+      stationaryJitterRangeSeconds: 0.9,
+      safetyCarPitLaneTimeReduction: 0.4,
+      vscPitLaneTimeReduction: 0.35,
+    });
+  });
+
   it("fails closed when Tier 2 stationary time is not in the source config", async () => {
     await expect(resolvePitStopConfig(database, { tier: 2, pitLaneLengthMeters: 400 }))
       .rejects.toThrow("pit.stationary_mean_seconds");
