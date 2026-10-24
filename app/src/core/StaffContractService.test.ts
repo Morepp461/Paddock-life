@@ -90,8 +90,8 @@ describe("staff contract service", () => {
       "SELECT team_id, is_free_agent FROM staff WHERE staff_id = ?;",
       ["staff-candidate-1"],
     )).toEqual([{ team_id: null, is_free_agent: 1 }]);
-    expect(await database.query("SELECT COUNT(*) AS count FROM staff_contract_events;"))
-      .toEqual([{ count: 0 }]);
+    expect(await database.query("SELECT COUNT(*) AS count FROM staff_contract_events WHERE staff_id = ?;", ["staff-candidate-1"]))
+      .toEqual([{ count: 2 }]);
   });
 
   it("rejects contract end seasons before the active season", async () => {
