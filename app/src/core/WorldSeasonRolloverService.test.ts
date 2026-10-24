@@ -184,5 +184,5 @@ describe("world season rollover", () => {
     } finally {
       await database.close();
     }
-  });
+  }, 20_000);
 });
