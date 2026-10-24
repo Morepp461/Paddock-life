@@ -5,6 +5,7 @@ import { SeededRandom } from "../core/SeededRandom";
 import { hashSeed } from "../core/RandomDistributions";
 import type { TrackCondition, TyreCompound } from "../core/TyreEngine";
 import { validateCircuitSeed } from "../seed/SeedDataLoader";
+import { planMandatoryDryTwoCompoundStrategy } from "../core/MandatoryDryTyreStrategy";
 
 const CONDITIONS: readonly TrackCondition[] = ["dry", "damp", "wet", "heavy-wet"];
 const COMPOUNDS: readonly TyreCompound[] = ["soft", "medium", "hard", "intermediate", "wet"];
@@ -49,6 +50,7 @@ export default function RaceWorkbench() {
   const [seed, setSeed] = useState("paddock-test-001");
   const [condition, setCondition] = useState<TrackCondition>("dry");
   const [compound, setCompound] = useState<TyreCompound>("medium");
+  const [pitLossOverride, setPitLossOverride] = useState("");
   const [temperature, setTemperature] = useState(25);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [error, setError] = useState("");
@@ -95,6 +97,32 @@ export default function RaceWorkbench() {
     try {
       setError("");
       if (!selectedCircuit) throw new Error("Seed sirkuit belum tersedia.");
+      let raceDrivers = drivers;
+      if (tier <= 3 && condition === "dry") {
+        const pitLossSeconds = Number(pitLossOverride);
+        if (!pitLossOverride.trim() || !Number.isFinite(pitLossSeconds) || pitLossSeconds <= 0) {
+          throw new Error("Untuk menguji aturan dua compound kering Tier 1–3, isi Pit loss override QA dengan nilai positif yang sedang kamu uji. Nilai ini tidak disimpan sebagai aturan default game.");
+        }
+        raceDrivers = drivers.map((driver) => {
+          const strategy = planMandatoryDryTwoCompoundStrategy({
+            tier,
+            totalLaps: laps,
+            trackAbrasion: selectedCircuit.abrasion,
+            trackTemperatureCelsius: temperature,
+            driverAggression: driver.aggression,
+            mechanicalGrip: driver.mechanicalGrip,
+            driverTyreManagement: driver.tyreManagement,
+            pitLossSeconds,
+          });
+          return {
+            ...driver,
+            compound: strategy.firstCompound,
+            compoundByLap: strategy.compoundByLap,
+            pitStopByLap: strategy.pitStopByLap,
+            pitLossSecondsByLap: strategy.pitLossSecondsByLap,
+          };
+        });
+      }
       const nextResult = simulateRace({
         worldSeed: seed,
         season: 1,
@@ -106,7 +134,7 @@ export default function RaceWorkbench() {
         trackTemperatureCelsius: temperature,
         trackCondition: condition,
         referenceSetupScore: 50,
-        drivers,
+        drivers: raceDrivers,
       });
       setResult(nextResult);
       setSelectedLap(laps);
@@ -157,6 +185,10 @@ export default function RaceWorkbench() {
           <label>Race laps (min. 8)
             <input type="number" min="8" max="100" step="1" value={laps} onChange={(event) => { setLaps(Number(event.target.value)); setResult(null); }} />
           </label>
+          {tier <= 3 && condition === "dry" && <label>Pit loss override QA (seconds)
+            <input type="number" min="0.1" max="180" step="0.1" value={pitLossOverride} placeholder="Required for two-compound test" onChange={(event) => { setPitLossOverride(event.target.value); setResult(null); }} />
+            <small>Explicit test input only. This is not a production default or a sourced tier value.</small>
+          </label>}
           <div className="read-only-field"><span>Estimated lap time</span><strong>{selectedCircuit ? selectedCircuit.estimatedLapSeconds.toFixed(1) + " s" : "Loading…"}</strong></div>
           <div className="read-only-field"><span>Track abrasion</span><strong>{selectedCircuit ? selectedCircuit.abrasion + " / 100" : "Loading…"}</strong></div>
           <label>Track temperature (°C)
@@ -172,7 +204,7 @@ export default function RaceWorkbench() {
         </div>
         {seedLoadError && <p className="error-message" role="alert">{seedLoadError}</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
-        {selectedCircuit && <p className="determinism-note">Source circuit: {selectedCircuit.name} · {selectedCircuit.lengthKm.toFixed(2)} km · {selectedCircuit.standardLaps} reference laps. Race distance is recalculated from circuit length and tier; the lap count remains editable for QA.</p>}
+        {selectedCircuit && <p className="determinism-note">Source circuit: {selectedCircuit.name} · {selectedCircuit.lengthKm.toFixed(2)} km · {selectedCircuit.standardLaps} reference laps. Race distance is recalculated from circuit length and tier; the lap count remains editable for QA. For dry Tier 1–3, the workbench runs the mandatory two-compound planner using the explicit QA pit-loss override.</p>}
       </section>
 
       {result ? <section className="workbench-panel results-panel" aria-labelledby="results-title">
@@ -190,8 +222,8 @@ export default function RaceWorkbench() {
           <strong>Lap {visibleLap} / {result.totalLaps}</strong>
         </div>
         <div className="table-scroll"><table className="classification-table">
-          <thead><tr><th>Pos</th><th>Driver</th><th>Lap time</th><th>Gap</th><th>Tyre wear</th><th>Condition</th></tr></thead>
-          <tbody>{lapRows.map((row) => <tr key={row.driverId}><td>{row.position.toString().padStart(2, "0")}</td><td>{row.driverName}</td><td>{formatTime(row.lapTimeSeconds)}</td><td>{row.position === 1 ? "LEADER" : `+${row.gapToLeaderSeconds.toFixed(3)}s`}</td><td>{row.tyreWearPercent.toFixed(1)}%</td><td>{row.trackCondition}</td></tr>)}</tbody>
+          <thead><tr><th>Pos</th><th>Driver</th><th>Lap time</th><th>Gap</th><th>Tyre wear</th><th>Pit</th><th>Condition</th></tr></thead>
+          <tbody>{lapRows.map((row) => <tr key={row.driverId}><td>{row.position.toString().padStart(2, "0")}</td><td>{row.driverName}</td><td>{formatTime(row.lapTimeSeconds)}</td><td>{row.position === 1 ? "LEADER" : `+${row.gapToLeaderSeconds.toFixed(3)}s`}</td><td>{row.tyreWearPercent.toFixed(1)}%</td><td>{row.pitStop ? `PIT +${row.pitLossSeconds.toFixed(2)}s` : "—"}</td><td>{row.trackCondition}</td></tr>)}</tbody>
         </table></div>
         <p className="determinism-note">Ulangi simulasi dengan seed dan input yang sama. Hasil harus identik. Ubah seed untuk menguji variasi hasil yang tetap deterministik.</p>
       </section> : <section className="empty-state"><span className="section-index">02 / RESULTS</span><h2>Waiting for simulation</h2><p>Belum ada hasil. Jalankan simulasi untuk memeriksa classification, lap time, gap, dan tyre wear.</p></section>}
