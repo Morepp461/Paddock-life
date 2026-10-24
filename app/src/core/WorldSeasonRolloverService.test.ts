@@ -74,6 +74,19 @@ describe("world season rollover", () => {
       const staffId = String(staffCandidates[0]!.staff_id);
       await database.run("UPDATE staff SET age = 80 WHERE staff_id = ?;", [staffId]);
 
+      const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1;", [career.careerId]);
+      expect(playerTeamRows).toHaveLength(1);
+      const expiringStaffRows = await database.query(
+        "SELECT staff_id FROM staff WHERE career_id = ? AND is_retired = 0 AND staff_id <> ? ORDER BY staff_id LIMIT 1;",
+        [career.careerId, staffId],
+      );
+      expect(expiringStaffRows).toHaveLength(1);
+      const expiringStaffId = String(expiringStaffRows[0]!.staff_id);
+      await database.run(
+        "UPDATE staff SET team_id = ?, is_free_agent = 0, contract_end = 1, age = 30 WHERE staff_id = ?;",
+        [String(playerTeamRows[0]!.team_id), expiringStaffId],
+      );
+
       const result = await rollWorldSeasonForward(database, { careerId: career.careerId, completedSeason: 1 });
       expect(result.currentSeason).toBe(2);
       expect(result.calendarsCreated).toBe([1, 2, 3, 4, 5, 6].reduce((sum, tier) => sum + TIER_CONFIG[tier as 1 | 2 | 3 | 4 | 5 | 6].roundsPerSeason, 0));
@@ -97,6 +110,14 @@ describe("world season rollover", () => {
       expect(result.staffRetiredByAge).toBeGreaterThanOrEqual(1);
       expect(await database.query("SELECT age, is_retired, team_id, is_free_agent FROM staff WHERE staff_id = ?;", [staffId]))
         .toEqual([{ age: 81, is_retired: 1, team_id: null, is_free_agent: 0 }]);
+      expect(await database.query(
+        "SELECT team_id, is_free_agent, contract_end FROM staff WHERE staff_id = ?;",
+        [expiringStaffId],
+      )).toEqual([{ team_id: null, is_free_agent: 1, contract_end: null }]);
+      expect(await database.query(
+        "SELECT event_type, season, contract_end FROM staff_contract_events WHERE staff_id = ?;",
+        [expiringStaffId],
+      )).toEqual([{ event_type: "expired", season: 2, contract_end: 1 }]);
       expect(await database.query(
         "SELECT previous_age, age_after, retirement_probability FROM staff_retirement_events WHERE career_id = ? AND staff_id = ? AND season = 2;",
         [career.careerId, staffId],
