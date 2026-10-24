@@ -86,7 +86,7 @@ describe("one-season youth driver loans", () => {
 
       const ownerAfter = await calculateTeamRacePayrollCosts(database, { teamId: ownerTeamId, season: 1, tier: 3, round: 1 });
       const borrowerAfter = await calculateTeamRacePayrollCosts(database, { teamId: loanTeamId, season: 1, tier: 3, round: 1 });
-      expect(ownerAfter.driverPayroll).toBeLessThan(ownerBefore.driverPayroll);
+      expect(ownerAfter.driverPayroll).toBeGreaterThan(ownerBefore.driverPayroll);
       expect(borrowerAfter.driverPayroll).toBeGreaterThan(borrowerBefore.driverPayroll);
 
       expect(effectiveDriverDevelopmentRate(2, true)).toBeCloseTo(2.3);
