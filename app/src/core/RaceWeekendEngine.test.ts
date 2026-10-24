@@ -4,6 +4,7 @@ import { hashSeed, sampleBoundedNormal } from "./RandomDistributions";
 import { SeededRandom } from "./SeededRandom";
 import { calculateMainRacePoints, calculateSprintRacePoints, calculateStartingGrid, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
 import type { WeatherTransitionMatrix } from "./WeatherEngine";
+import { planMandatoryDryTwoCompoundStrategy } from "./MandatoryDryTyreStrategy";
 
 function drivers(count: number, compound: RaceWeekendDriver["compound"] = "medium"): RaceWeekendDriver[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -216,6 +217,31 @@ describe("race weekend orchestration", () => {
         .toEqual(second.race.classification.map((row) => row.driverId));
       expect(new Set(first.race.classification.map((row) => row.driverId)).size).toBe(config.gridSize);
     }
+  });
+
+  it("keeps main-race mandatory pit schedules out of the shorter sprint session", () => {
+    const roster = drivers(24, "medium");
+    const strategy = planMandatoryDryTwoCompoundStrategy({
+      tier: 1, totalLaps: 12, trackAbrasion: 50, trackTemperatureCelsius: 95,
+      driverAggression: roster[0]!.aggression, mechanicalGrip: roster[0]!.mechanicalGrip,
+      driverTyreManagement: roster[0]!.tyreManagement, pitLossSeconds: 24,
+    });
+    roster[0] = {
+      ...roster[0]!,
+      compound: strategy.firstCompound,
+      compoundByLap: strategy.compoundByLap,
+      pitStopByLap: strategy.pitStopByLap,
+      pitLossSecondsByLap: strategy.pitLossSecondsByLap,
+    };
+    const result = simulateRaceWeekend({
+      worldSeed: "sprint-main-pit-isolation", season: 1, round: 1, tier: 1,
+      estimatedCircuitLapSeconds: 90, totalLaps: 12, trackAbrasion: 50,
+      trackTemperatureCelsius: 95, trackCondition: "dry", referenceSetupScore: 50,
+      hasSprint: true, drivers: roster,
+    });
+    expect(result.sprint?.laps.flat().some((row) => row.pitStop)).toBe(false);
+    expect(result.race.laps[strategy.pitLap - 1]!.find((row) => row.driverId === roster[0]!.id)?.pitStop).toBe(true);
+    expect(result.race.laps[strategy.pitLap - 1]!.find((row) => row.driverId === roster[0]!.id)?.pitLossSeconds).toBe(24);
   });
 
   it("does not create a sprint session when the calendar round has no sprint", () => {
