@@ -4,6 +4,10 @@ import type { TierId } from "./GameConfig";
 export interface PitStopInput {
   readonly tier: TierId;
   readonly pitLaneLengthMeters: number;
+  /** Loaded from game_config; never silently hardcoded by the engine. */
+  readonly pitLaneSpeedMetersPerSecond: number;
+  /** Fraction of pit-lane time removed during a configured SC/VSC period. */
+  readonly pitLaneTimeReduction?: number;
   readonly mechanicSkillAverage: number;
   /** Mean stationary time from the tier's game_config entry. */
   readonly stationarySeconds: number;
@@ -36,6 +40,13 @@ export interface PitStopResult {
 function validateInput(input: PitStopInput): void {
   if (!Number.isFinite(input.pitLaneLengthMeters) || input.pitLaneLengthMeters <= 0) {
     throw new RangeError("Panjang pit lane harus berupa angka positif.");
+  }
+  if (!Number.isFinite(input.pitLaneSpeedMetersPerSecond) || input.pitLaneSpeedMetersPerSecond <= 0) {
+    throw new RangeError("Kecepatan pit lane harus berasal dari konfigurasi positif.");
+  }
+  const pitLaneTimeReduction = input.pitLaneTimeReduction ?? 0;
+  if (!Number.isFinite(pitLaneTimeReduction) || pitLaneTimeReduction < 0 || pitLaneTimeReduction > 1) {
+    throw new RangeError("Pengurangan waktu pit lane harus berada pada rentang 0–1.");
   }
   if (!Number.isFinite(input.mechanicSkillAverage) || input.mechanicSkillAverage < 0 || input.mechanicSkillAverage > 100) {
     throw new RangeError("Skill mekanik harus berada pada rentang 0–100.");
@@ -85,7 +96,7 @@ export function simulatePitStop(input: PitStopInput): PitStopResult {
   const random = new SeededRandom(hashPitSeed(input));
   const crewErrorOccurred = random.next() < input.crewErrorProbability;
   const unsafeReleaseOccurred = random.next() < input.unsafeReleaseProbability;
-  const pitLaneSeconds = input.pitLaneLengthMeters / 22.2;
+  const pitLaneSeconds = (input.pitLaneLengthMeters / input.pitLaneSpeedMetersPerSecond) * (1 - pitLaneTimeReduction);
   const stationarySeconds = input.stationarySeconds + input.stationaryJitterSeconds;
   const crewErrorBaseSeconds = Math.max(0, (100 - input.mechanicSkillAverage) * 0.03 + input.crewErrorJitterSeconds);
   const crewErrorSeconds = crewErrorOccurred ? crewErrorBaseSeconds : 0;
