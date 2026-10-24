@@ -60,6 +60,21 @@ describe("source-traceable game config store", () => {
     await expect(requireGameConfigNumber(database, "simulation.test-global")).rejects.toThrow("Game config harus berupa angka finite");
   });
 
+  it("keeps source-undefined race settings unconfigured", async () => {
+    await expect(getGameConfig<number>(database, "pit.stationary_mean_seconds", {
+      scope: "tier", scopeId: "2",
+    })).resolves.toBeNull();
+    await expect(getGameConfig<number>(database, "pit.stationary_mean_seconds", {
+      scope: "tier", scopeId: "3",
+    })).resolves.toBeNull();
+    await expect(getGameConfig<number>(database, "neutralization.vsc_probability", {
+      scope: "global", scopeId: "global",
+    })).resolves.toBeNull();
+    await expect(getGameConfig<number>(database, "neutralization.red_flag_probability", {
+      scope: "global", scopeId: "global",
+    })).resolves.toBeNull();
+  });
+
   it("rejects invalid lookup scopes", async () => {
     await expect(getGameConfig(database, "x", { scope: "global", scopeId: "1" })).rejects.toThrow();
     await expect(getGameConfig(database, "x", { scope: "tier", scopeId: "global" })).rejects.toThrow();
