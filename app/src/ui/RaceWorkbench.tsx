@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { simulateRace, type RaceResult } from "../core/RaceEngine";
+import { simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { calculateRaceLapCount, TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { SeededRandom } from "../core/SeededRandom";
 import { hashSeed } from "../core/RandomDistributions";
@@ -19,21 +19,28 @@ function scoreAround(random: SeededRandom, reference: number): number {
 function makeTestDrivers(tier: TierId, seed: string, compound: TyreCompound) {
   const config = TIER_CONFIG[tier];
   const random = new SeededRandom(hashSeed([seed, "paddock-life-workbench"]));
-  return Array.from({ length: config.gridSize }, (_, index) => ({
-    id: `TEST-${String(index + 1).padStart(2, "0")}`,
-    name: `Test Driver ${String(index + 1).padStart(2, "0")}`,
-    carScore: scoreAround(random, config.referenceCarScore),
-    driverScore: scoreAround(random, config.referenceDriverOverall),
-    setupScore: scoreAround(random, 50),
-    formModifier: Number(((random.next() - 0.5) * 2).toFixed(3)),
-    aggression: Math.round(35 + random.next() * 40),
-    tyreManagement: Math.round(35 + random.next() * 40),
-    mechanicalGrip: scoreAround(random, config.referenceCarScore),
-    compound,
-    weatherAdaptation: Math.round(25 + random.next() * 60),
-  }));
+  return Array.from({ length: config.gridSize }, (_, index) => {
+    const driverScore = scoreAround(random, config.referenceDriverOverall);
+    return {
+      id: `TEST-${String(index + 1).padStart(2, "0")}`,
+      name: `Test Driver ${String(index + 1).padStart(2, "0")}`,
+      carScore: scoreAround(random, config.referenceCarScore),
+      driverScore,
+      qualifyingScore: scoreAround(random, config.referenceDriverOverall),
+      setupScore: scoreAround(random, 50),
+      formModifier: Number(((random.next() - 0.5) * 2).toFixed(3)),
+      aggression: Math.round(35 + random.next() * 40),
+      tyreManagement: Math.round(35 + random.next() * 40),
+      mechanicalGrip: scoreAround(random, config.referenceCarScore),
+      compound,
+      weatherAdaptation: Math.round(25 + random.next() * 60),
+      starts: Math.round(35 + random.next() * 40),
+      racecraft: driverScore,
+      overtakingSkill: Math.round(35 + random.next() * 40),
+      defendingSkill: Math.round(35 + random.next() * 40),
+    };
+  });
 }
-
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds)) return "—";
   const minutes = Math.floor(seconds / 60);
@@ -52,10 +59,12 @@ export default function RaceWorkbench() {
   const [compound, setCompound] = useState<TyreCompound>("medium");
   const [pitLossOverride, setPitLossOverride] = useState("");
   const [temperature, setTemperature] = useState(25);
-  const [result, setResult] = useState<RaceResult | null>(null);
+  const [result, setResult] = useState<RaceWeekendResult | null>(null);
   const [error, setError] = useState("");
   const [selectedLap, setSelectedLap] = useState(8);
   const [runCount, setRunCount] = useState(0);
+  const [hasSprint, setHasSprint] = useState(false);
+  const sprintEligible = TIER_CONFIG[tier].sprintRacesPerSeason > 0;
   const availableCompounds = useMemo(() => availableTyreCompounds(tier, condition), [tier, condition]);
 
   useEffect(() => {
@@ -97,8 +106,11 @@ export default function RaceWorkbench() {
       setResult(null);
     }
   }, [availableCompounds, compound]);
-  const visibleLap = result ? Math.min(selectedLap, result.totalLaps) : 0;
-  const lapRows = result?.laps[visibleLap - 1] ?? [];
+  useEffect(() => {
+    if (!sprintEligible) setHasSprint(false);
+  }, [sprintEligible]);
+  const visibleLap = result ? Math.min(selectedLap, result.race.totalLaps) : 0;
+  const lapRows = result?.race.laps[visibleLap - 1] ?? [];
 
   function runSimulation() {
     try {
@@ -130,7 +142,7 @@ export default function RaceWorkbench() {
           };
         });
       }
-      const nextResult = simulateRace({
+      const nextResult = simulateRaceWeekend({
         worldSeed: seed,
         season: 1,
         round: 1,
@@ -141,6 +153,7 @@ export default function RaceWorkbench() {
         trackTemperatureCelsius: temperature,
         trackCondition: condition,
         referenceSetupScore: 50,
+        hasSprint: sprintEligible && hasSprint,
         drivers: raceDrivers,
       });
       setResult(nextResult);
@@ -192,6 +205,10 @@ export default function RaceWorkbench() {
           <label>Race laps (min. 8)
             <input type="number" min="8" max="100" step="1" value={laps} onChange={(event) => { setLaps(Number(event.target.value)); setResult(null); }} />
           </label>
+          <label className="checkbox-field">Sprint session · QA override
+            <input type="checkbox" checked={sprintEligible && hasSprint} disabled={!sprintEligible} onChange={(event) => { setHasSprint(event.target.checked); setResult(null); }} />
+            <small>Only Tier 1–2 support sprint sessions. Calendar frequency is not simulated in this workbench.</small>
+          </label>
           {tier <= 3 && condition === "dry" && <label>Pit loss override QA (seconds)
             <input type="number" min="0.1" max="180" step="0.1" value={pitLossOverride} placeholder="Required for two-compound test" onChange={(event) => { setPitLossOverride(event.target.value); setResult(null); }} />
             <small>Explicit test input only. This is not a production default or a sourced tier value.</small>
@@ -217,22 +234,34 @@ export default function RaceWorkbench() {
       {result ? <section className="workbench-panel results-panel" aria-labelledby="results-title">
         <div className="panel-heading"><div><span className="section-index">02 / CLASSIFICATION</span><h2 id="results-title">Race result</h2></div><span className="qa-label">RUN #{runCount}</span></div>
         <div className="result-summary">
-          <div><span>Winner</span><strong>{result.classification[0]?.driverName ?? "—"}</strong></div>
+          <div><span>Winner</span><strong>{result.race.classification[0]?.driverName ?? "—"}</strong></div>
           <div><span>Circuit</span><strong>{selectedCircuit?.name ?? "—"}</strong></div>
-          <div><span>Distance</span><strong>{result.totalLaps} laps</strong></div>
-          <div><span>Finish time</span><strong>{formatTime(result.classification[0]?.cumulativeTimeSeconds ?? 0)}</strong></div>
+          <div><span>Distance</span><strong>{result.race.totalLaps} laps</strong></div>
+          <div><span>Finish time</span><strong>{formatTime(result.race.classification[0]?.cumulativeTimeSeconds ?? 0)}</strong></div>
           <div><span>Seed</span><strong>{seed}</strong></div>
+        </div>
+        <div className="weekend-session-grid">
+          <section className="session-card">
+            <div className="panel-heading"><div><span className="section-index">QUALIFYING</span><h3>Starting grid</h3></div></div>
+            <div className="table-scroll"><table className="classification-table"><thead><tr><th>Grid</th><th>Driver</th><th>Best lap</th></tr></thead>
+              <tbody>{[...result.qualifying.classification].sort((a, b) => a.gridPosition - b.gridPosition).map((row) => <tr key={row.driverId}><td>{row.gridPosition}</td><td>{row.driverName}</td><td>{formatTime(row.bestLapSeconds)}</td></tr>)}</tbody></table></div>
+          </section>
+          {result.sprint && <section className="session-card">
+            <div className="panel-heading"><div><span className="section-index">SPRINT · {result.sprintLaps} LAPS</span><h3>Sprint classification</h3></div></div>
+            <div className="table-scroll"><table className="classification-table"><thead><tr><th>Pos</th><th>Driver</th><th>Time</th></tr></thead>
+              <tbody>{[...result.sprint.classification].sort((a, b) => a.position - b.position).map((row) => <tr key={row.driverId}><td>{row.position}</td><td>{row.driverName}</td><td>{formatTime(row.cumulativeTimeSeconds)}</td></tr>)}</tbody></table></div>
+          </section>}
         </div>
         <div className="lap-selector">
           <label htmlFor="lap-select">Inspect lap</label>
-          <input id="lap-select" type="range" min="1" max={result.totalLaps} value={visibleLap} onChange={(event) => setSelectedLap(Number(event.target.value))} />
-          <strong>Lap {visibleLap} / {result.totalLaps}</strong>
+          <input id="lap-select" type="range" min="1" max={result.race.totalLaps} value={visibleLap} onChange={(event) => setSelectedLap(Number(event.target.value))} />
+          <strong>Lap {visibleLap} / {result.race.totalLaps}</strong>
         </div>
         <div className="table-scroll"><table className="classification-table">
           <thead><tr><th>Pos</th><th>Driver</th><th>Lap time</th><th>Gap</th><th>Tyre wear</th><th>Pit</th><th>Condition</th></tr></thead>
           <tbody>{lapRows.map((row) => <tr key={row.driverId}><td>{row.position.toString().padStart(2, "0")}</td><td>{row.driverName}</td><td>{formatTime(row.lapTimeSeconds)}</td><td>{row.position === 1 ? "LEADER" : `+${row.gapToLeaderSeconds.toFixed(3)}s`}</td><td>{row.tyreWearPercent.toFixed(1)}%</td><td>{row.pitStop ? `PIT +${row.pitLossSeconds.toFixed(2)}s` : "—"}</td><td>{row.trackCondition}</td></tr>)}</tbody>
         </table></div>
-        <p className="determinism-note">Ulangi simulasi dengan seed dan input yang sama. Hasil harus identik. Ubah seed untuk menguji variasi hasil yang tetap deterministik.</p>
+        <p className="determinism-note">Ulangi weekend dengan seed dan input yang sama. Qualifying, optional sprint, grid, dan main race harus identik. Ubah seed untuk menguji variasi hasil yang tetap deterministik.</p>
       </section> : <section className="empty-state"><span className="section-index">02 / RESULTS</span><h2>Waiting for simulation</h2><p>Belum ada hasil. Jalankan simulasi untuk memeriksa classification, lap time, gap, dan tyre wear.</p></section>}
 
       <footer className="workbench-footer"><span>PADDOCK LIFE / INTERNAL TEST BUILD</span><span>Career Mode belum terhubung ke halaman ini.</span></footer>
