@@ -250,8 +250,17 @@ export function simulateRaceWeekend(input: RaceWeekendInput): RaceWeekendResult 
     worldSeed: input.worldSeed, season: input.season, round: input.round,
     session: "race", qualifying, drivers: input.drivers,
   });
+  // The mandatory two-compound rule is specified for the main dry race.
+  // Do not carry a full-distance main-race pit schedule into the shorter sprint.
+  const sprintDrivers = drivers.map((driver) => ({
+    ...driver,
+    compoundByLap: undefined,
+    pitStopByLap: undefined,
+    pitLossSecondsByLap: undefined,
+  }));
   const rawSprint = sprintLaps === null ? null : simulateRace({
     ...raceInput,
+    drivers: sprintDrivers,
     worldSeed: sprintSeed,
     totalLaps: sprintLaps,
     weatherByLap: createWeatherSchedule(input, sprintSeed, sprintLaps),
