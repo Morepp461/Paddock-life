@@ -8,6 +8,7 @@ import { calculateWeatherAdaptation } from "../core/WeatherEngine";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
+import { loadCareerRaceRoster } from "../core/CareerRaceRosterService";
 import { settleCareerSeason } from "../core/SeasonSettlementEngine";
 import { rollWorldSeasonForward } from "../core/WorldSeasonRolloverService";
 import { transitionWorldAfterSeason } from "../core/WorldSeasonTransitionService";
@@ -227,22 +228,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
   );
   const race = raceRows[0];
   if (!race) throw new Error("Semua race di season ini sudah selesai. Transisi ke season berikutnya belum tersedia di build ini.");
-  const raceDrivers = await database.query(
-    `SELECT d.driver_id, d.name, d.pace, d.qualifying, d.racecraft, d.consistency, d.wet_skill, d.adaptability, d.tyre_management, d.aggression,
-      d.overtaking, d.defending, d.starts, t.team_id, t.is_player_team, c.engine_power, c.aero, c.high_speed, c.medium_speed, c.low_speed, c.mechanical_grip, c.traction, c.braking, c.tyre_management AS car_tyre_management
-     FROM drivers d
-     JOIN driver_contracts dc ON dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-     LEFT JOIN driver_loans l ON l.driver_id = d.driver_id AND l.career_id = d.career_id AND l.status = 'active' AND l.start_season <= ? AND l.end_season >= ?
-     JOIN teams owner_team ON owner_team.team_id = dc.team_id AND owner_team.career_id = ? AND owner_team.is_active = 1
-     JOIN teams t ON t.team_id = COALESCE(l.loan_team_id, owner_team.team_id) AND t.career_id = ? AND t.division_id = ? AND t.is_active = 1
-       AND d.is_retired = 0 AND (d.is_academy_driver = 0 OR l.loan_id IS NOT NULL) AND d.age BETWEEN ? AND ?
-     JOIN cars c ON c.team_id = t.team_id AND c.season = ?
-     ORDER BY t.team_id, d.driver_id;`,
-    [season, season, season, season, careerId, careerId, "T" + tier, TIER_CONFIG[tier].driverAge.min, TIER_CONFIG[tier].driverAge.max, season],
-  );
-  if (raceDrivers.length !== TIER_CONFIG[tier].gridSize) {
-    throw new Error("Grid race harus berisi " + TIER_CONFIG[tier].gridSize + " driver, tetapi ditemukan " + raceDrivers.length + ".");
-  }
+  const raceDrivers = await loadCareerRaceRoster(database, { careerId, season, tier });
   const trackCondition = parseTrackCondition(race.track_condition);
   if (!availableTyreCompounds(tier, trackCondition).includes(compound)) {
     throw new Error("Tyre compound tidak bisa digunakan pada kondisi lintasan ini.");
