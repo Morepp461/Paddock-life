@@ -6,6 +6,7 @@ import { runMigrations } from "../storage/Migrations";
 import { generateCareerWorld } from "../seed/CareerWorldGenerator";
 import { calculateTeamRacePayrollCosts } from "./RaceFinanceService";
 import { createYouthDriverLoan, effectiveDriverDevelopmentRate, expireYouthDriverLoans } from "./YouthLoanService";
+import { TIER_CONFIG } from "./GameConfig";
 
 async function makeDatabase() {
   const wasmPath = new URL("../../../node_modules/sql.js/dist/sql-wasm.wasm", import.meta.url).pathname;
@@ -46,17 +47,18 @@ describe("one-season youth driver loans", () => {
         takeoverTeamId: "D3-01",
       }, { fetcher: seedFetcher, managerGender: "male" });
       const ownerTeamId = await resolveTeamId(database, career.careerId, "D3-01");
-      const loanTeamId = await resolveTeamId(database, career.careerId, "D3-02");
+      const loanTeamId = await resolveTeamId(database, career.careerId, "D4-01");
       const driverRows = await database.query(
-        `SELECT d.driver_id, dc.salary
+        `SELECT d.driver_id, d.age, dc.salary
          FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id
          WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1
-           AND d.is_retired = 0 AND d.is_academy_driver = 0
+           AND d.is_retired = 0 AND d.is_academy_driver = 1
          ORDER BY d.driver_id LIMIT 1;`,
         [ownerTeamId],
       );
       const driver = driverRows[0];
-      if (!driver) throw new Error("Owner team has no eligible contracted driver.");
+      if (!driver) throw new Error("Owner team has no contracted academy driver.");
+      await database.run("UPDATE drivers SET age = ? WHERE driver_id = ?;", [TIER_CONFIG[4].driverAge.min, String(driver.driver_id)]);
       const borrowerDriver = await database.query(
         `SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id
          WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1
@@ -112,12 +114,12 @@ describe("one-season youth driver loans", () => {
         takeoverTeamId: "D3-01",
       }, { fetcher: seedFetcher, managerGender: "male" });
       const ownerTeamId = await resolveTeamId(database, career.careerId, "D3-01");
-      const loanTeamId = await resolveTeamId(database, career.careerId, "D3-02");
+      const loanTeamId = await resolveTeamId(database, career.careerId, "D4-01");
       const driver = (await database.query(
-        "SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1 AND d.is_retired = 0 AND d.is_academy_driver = 0 ORDER BY d.driver_id LIMIT 1;",
+        "SELECT d.driver_id FROM drivers d JOIN driver_contracts dc ON dc.driver_id = d.driver_id WHERE dc.team_id = ? AND dc.start_season <= 1 AND dc.end_season >= 1 AND d.is_retired = 0 AND d.is_academy_driver = 1 ORDER BY d.driver_id LIMIT 1;",
         [ownerTeamId],
       ))[0];
-      if (!driver) throw new Error("No eligible owner driver.");
+      if (!driver) throw new Error("No eligible owner academy driver.");
       await database.run("UPDATE career SET current_race = 2 WHERE career_id = ?;", [career.careerId]);
       await expect(createYouthDriverLoan(database, {
         careerId: career.careerId, driverId: String(driver.driver_id), ownerTeamId, loanTeamId, season: 1,
