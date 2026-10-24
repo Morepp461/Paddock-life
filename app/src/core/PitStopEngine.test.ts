@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { simulatePitStop, type PitStopInput } from "./PitStopEngine";
+import { simulatePitStop } from "./PitStopEngine";
 
-const base: PitStopInput = {
-  tier: 1,
+const base = {
+  tier: 1 as const,
   pitLaneLengthMeters: 420,
+  pitLaneSpeedMetersPerSecond: 22.2,
   mechanicSkillAverage: 80,
   stationarySeconds: 2.4,
   stationaryJitterSeconds: 0.1,
@@ -19,9 +20,10 @@ const base: PitStopInput = {
 };
 
 describe("pit stop loss model", () => {
-  it("calculates pit lane time using the documented 22.2 m/s limiter", () => {
+  it("uses the configured pit lane speed instead of a hardcoded limiter", () => {
     const result = simulatePitStop(base);
     expect(result.pitLaneSeconds).toBeCloseTo(420 / 22.2);
+    expect(simulatePitStop({ ...base, pitLaneSpeedMetersPerSecond: 21 }).pitLaneSeconds).toBeCloseTo(420 / 21);
     expect(result.stationarySeconds).toBeCloseTo(2.5);
     expect(result.totalLossSeconds).toBeCloseTo(
       result.pitLaneSeconds + result.stationarySeconds + result.crewErrorSeconds + result.unsafeReleaseDelaySeconds,
@@ -29,9 +31,10 @@ describe("pit stop loss model", () => {
   });
 
   it("returns the fixed 20-second pit stop in Tier 5 and disables Tier 6 pit stops", () => {
-    const tier5 = simulatePitStop({ ...base, tier: 5 });
+    const tier5 = simulatePitStop({ ...base, tier: 5, fixedTotalLossSeconds: 20 });
     expect(tier5.totalLossSeconds).toBe(20);
-    expect(tier5.pitLaneSeconds).toBe(20);
+    expect(tier5.pitLaneSeconds).toBe(0);
+    expect(simulatePitStop({ ...base, tier: 5, fixedTotalLossSeconds: 17.5 }).totalLossSeconds).toBe(17.5);
     expect(tier5.crewErrorOccurred).toBe(false);
     expect(() => simulatePitStop({ ...base, tier: 6 })).toThrow("tidak tersedia");
   });
