@@ -51,7 +51,7 @@ export async function createYouthDriverLoan(
     const [ownerRows, borrowerRows, driverRows, contractRows, activeLoans] = await Promise.all([
       database.query("SELECT team_id, division_id, academy_level, is_active FROM teams WHERE team_id = ? AND career_id = ?;", [input.ownerTeamId, input.careerId]),
       database.query("SELECT team_id, division_id, is_active FROM teams WHERE team_id = ? AND career_id = ?;", [input.loanTeamId, input.careerId]),
-      database.query("SELECT driver_id, age, is_retired, loaned_to_team_id FROM drivers WHERE driver_id = ? AND career_id = ?;", [input.driverId, input.careerId]),
+      database.query("SELECT driver_id, age, is_retired, is_academy_driver, loaned_to_team_id FROM drivers WHERE driver_id = ? AND career_id = ?;", [input.driverId, input.careerId]),
       database.query(
         "SELECT contract_id, salary FROM driver_contracts WHERE driver_id = ? AND team_id = ? AND start_season <= ? AND end_season >= ?;",
         [input.driverId, input.ownerTeamId, input.season, input.season],
@@ -68,8 +68,13 @@ export async function createYouthDriverLoan(
     if (n(driver, "is_retired") === 1) throw new Error("Driver pensiun tidak bisa dipinjamkan.");
     if (driver.loaned_to_team_id !== null && driver.loaned_to_team_id !== undefined) throw new Error("Driver sudah dipinjamkan ke tim lain.");
     if (activeLoans.length) throw new Error("Driver sudah memiliki loan aktif.");
+    const ownerTierValue = Number(String(owner.division_id).replace(/^T/, ""));
     const tierValue = Number(String(borrower.division_id).replace(/^T/, ""));
-    if (![1, 2, 3, 4, 5, 6].includes(tierValue)) throw new Error("Tier tim peminjam tidak valid.");
+    if (![1, 2, 3, 4, 5, 6].includes(ownerTierValue) || ![1, 2, 3, 4, 5, 6].includes(tierValue)) {
+      throw new Error("Tier tim pemilik atau peminjam tidak valid.");
+    }
+    if (tierValue <= ownerTierValue) throw new Error("Youth Loan hanya boleh menuju divisi yang lebih rendah.");
+    if (n(driver, "is_academy_driver") !== 1) throw new Error("Hanya driver Driver Academy yang bisa dipinjamkan melalui Youth Loan.");
     const tier = tierValue as TierId;
     const age = n(driver, "age");
     const ageBand = TIER_CONFIG[tier].driverAge;
