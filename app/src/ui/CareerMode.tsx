@@ -1185,7 +1185,7 @@ export default function CareerMode() {
                 <input type="number" min="2" max={Math.max(2, Number(field(nextRace, "laps")) - 1)} step="1" value={pitLapInput} placeholder="Required" onChange={(event) => setPitLapInput(event.target.value)} />
               </label>
               <label>QA total pit-loss override (seconds)
-                <input type="number" min="0.1" max="180" step="0.1" value={pitLossOverride} placeholder="Required for dry Tier 1–3" onChange={(event) => setPitLossOverride(event.target.value)} />
+                <input type="number" min="0.1" step="0.1" value={pitLossOverride} placeholder="Required for dry Tier 1–3" onChange={(event) => setPitLossOverride(event.target.value)} />
               </label>
             </>}
           </div>
