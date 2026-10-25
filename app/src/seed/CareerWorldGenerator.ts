@@ -377,11 +377,14 @@ export async function generateCareerWorld(
       existingNames.add(normalizeFullName(generated.fullName));
       const staffId = stableId(seed, "free-staff", index);
       const skill = clamp(INITIAL_DISTRIBUTIONS[tier].staffSkillMean + sampleDelta(rng, 8), 1, 100);
+      const askingSalary = tier === 6
+        ? 0
+        : Math.round(TIER_CONFIG[tier].requiredBudget * 0.15 / INITIAL_DISTRIBUTIONS[tier].staffSlots);
       await database.run(
-        "INSERT INTO staff (staff_id, career_id, team_id, role, name, nationality, name_culture, gender, age, skill, specialization, reputation, salary, potential, contract_end, is_free_agent) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, 1);",
+        "INSERT INTO staff (staff_id, career_id, team_id, role, name, nationality, name_culture, gender, age, skill, specialization, reputation, salary, potential, contract_end, is_free_agent) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1);",
         [staffId, careerId, ["Race Engineer", "Mechanical Engineer", "Performance Coach", "Scout", "Strategist"][index % 5],
           generated.fullName, generated.countryCode, generated.cultureId, generated.gender, Math.round(28 + rng.next() * 42),
-          skill, "General", Math.round(skill * 100), clamp(skill + rng.next() * 20, 0, 100)],
+          skill, "General", Math.round(skill * 100), askingSalary, clamp(skill + rng.next() * 20, 0, 100)],
       );
       staffCreated += 1;
     }
