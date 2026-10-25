@@ -1,6 +1,34 @@
 import { SeededRandom } from "./SeededRandom";
 import { hashSeed } from "./RandomDistributions";
 
+export interface DriverTransferWindowInput {
+  readonly currentSeason: number;
+  readonly targetSeason: number;
+  readonly currentRace: number;
+  readonly roundsPerSeason: number;
+  readonly seasonComplete: boolean;
+}
+
+/** Career Rules §2: pre-season, or the three-race mid-season window. */
+export function isDriverTransferWindowOpen(input: DriverTransferWindowInput): boolean {
+  for (const [name, value] of [
+    ["currentSeason", input.currentSeason],
+    ["targetSeason", input.targetSeason],
+    ["currentRace", input.currentRace],
+    ["roundsPerSeason", input.roundsPerSeason],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new RangeError(name + " harus integer positif.");
+  }
+  if (input.targetSeason < input.currentSeason) return false;
+  if (input.targetSeason > input.currentSeason) {
+    return input.currentRace === 1 || input.seasonComplete;
+  }
+  if (input.seasonComplete || input.currentRace > input.roundsPerSeason) return false;
+  if (input.currentRace === 1) return true;
+  const firstMidSeasonRace = Math.ceil(input.roundsPerSeason / 2);
+  return input.currentRace >= firstMidSeasonRace && input.currentRace <= firstMidSeasonRace + 2;
+}
+
 export const DRIVER_SALARY_RATE = 0.12;
 export const MINIMUM_DEMAND_FACTOR = 0.85;
 export const MAXIMUM_DEMAND_FACTOR = 1.3;
