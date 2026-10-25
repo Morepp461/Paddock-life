@@ -9,7 +9,7 @@ export interface MandatoryDryStrategyInput {
   readonly driverAggression: number;
   readonly mechanicalGrip: number;
   readonly driverTyreManagement: number;
-  /** Full stop loss supplied by the validated pit configuration for this race. */
+  /** Full stop loss supplied by validated configuration or an explicit QA override; never hardcoded. */
   readonly pitLossSeconds: number;
   /** Optional player preferences; omitted preferences are optimized by the planner. */
   readonly preferredFirstCompound?: DryTyreCompound;
@@ -97,7 +97,7 @@ function scoreStrategy(
 
 /**
  * Selects the lowest modeled-time mandatory two-compound dry strategy.
- * All race-specific pit loss values must come from validated game configuration;
+ * Pit loss must be supplied explicitly by validated configuration or a QA override;
  * this planner does not invent stationary times, error probabilities, or pit costs.
  */
 export function planMandatoryDryTwoCompoundStrategy(input: MandatoryDryStrategyInput): MandatoryDryStrategy {
