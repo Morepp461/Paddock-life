@@ -820,6 +820,34 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_driver_transfer_events_driver ON driver_transfer_events(career_id, driver_id, season);
     `,
   },
+  {
+    version: 23,
+    description: "add source-defined driver training facility and development records",
+    sql: `
+      ALTER TABLE teams ADD COLUMN training_facilities_level INTEGER NOT NULL DEFAULT 1
+        CHECK (training_facilities_level BETWEEN 1 AND 10);
+      CREATE TABLE driver_development_records (
+        record_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+        training_team_id TEXT REFERENCES teams(team_id) ON DELETE SET NULL,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        context TEXT NOT NULL CHECK (context IN ('academy', 'loan', 'race', 'manual')),
+        attribute TEXT NOT NULL,
+        training_quality REAL NOT NULL CHECK (training_quality >= 0),
+        base_development_rate REAL NOT NULL CHECK (base_development_rate >= 0),
+        effective_development_rate REAL NOT NULL CHECK (effective_development_rate >= 0),
+        age_factor REAL NOT NULL CHECK (age_factor >= 0),
+        potential_remaining REAL NOT NULL CHECK (potential_remaining >= 0),
+        requested_gain REAL NOT NULL CHECK (requested_gain >= 0),
+        actual_gain REAL NOT NULL CHECK (actual_gain >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (career_id, record_id)
+      );
+      CREATE INDEX idx_driver_development_records_driver
+        ON driver_development_records(career_id, driver_id, season);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {
