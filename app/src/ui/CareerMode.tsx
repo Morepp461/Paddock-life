@@ -25,6 +25,7 @@ import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSele
 import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
 import { FACILITY_CATALOG, upgradeTeamFacility, type FacilityId } from "../core/FacilityUpgradeService";
 import { calculateEffectiveDevelopmentDuration } from "../core/DevelopmentEngine";
+import { calculateTrainingQuality } from "../core/DriverDevelopmentEngine";
 import { hashSeed } from "../core/RandomDistributions";
 import { normalizeFullName } from "../seed/NameGenerator";
 import type { NamePoolPayload } from "../seed/NamePoolLoader";
@@ -1347,7 +1348,7 @@ export default function CareerMode() {
         </article>
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>TEAM INFRASTRUCTURE</small><h2>Facility upgrades</h2></div><span>MAX LEVEL 10</span></div>
-          <p className="muted-text">Upgrade costs follow the documented RB-based formula. Each purchase and its finance ledger entry are committed atomically.</p>
+          <p className="muted-text">Upgrade costs follow the documented RB-based formula. Training Facilities directly set driver TrainingQuality (0.6 + 0.05 × level). Each purchase and its finance ledger entry are committed atomically.</p>
           {facilityError && <p className="inline-error">{facilityError}</p>}
           <div className="facility-grid">{FACILITY_CATALOG.map((facility) => {
             const level = numberField(team, facility.column, 1);
@@ -1355,6 +1356,7 @@ export default function CareerMode() {
             return <div className="facility-card" key={facility.id}>
               <div><small>{facility.id.replaceAll("_", " ").toUpperCase()}</small><strong>{facility.label}</strong></div>
               <div className="facility-level"><span>LEVEL</span><b>{level}<i>/10</i></b></div>
+              {facility.id === "training" && <div className="training-quality"><span>TRAINING QUALITY</span><b>{calculateTrainingQuality(level).toFixed(2)}</b></div>}
               <div className="facility-cost"><span>{level < 10 ? "NEXT UPGRADE" : "MAXIMUM LEVEL"}</span><b>{level < 10 ? formatCash(cost) : "MAX"}</b></div>
               <button className="mini-action accept" disabled={facilityBusy || level >= 10} onClick={() => void upgradeFacility(facility.id)}>{facilityBusy ? "Processing…" : level >= 10 ? "Fully upgraded" : "Upgrade to L" + (level + 1)}</button>
             </div>;

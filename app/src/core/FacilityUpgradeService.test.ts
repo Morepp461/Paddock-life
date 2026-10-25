@@ -52,6 +52,25 @@ describe("facility upgrade service", () => {
     }
   });
 
+  it("upgrades Training Facilities and persists its level", async () => {
+    const database = await makeDatabase();
+    try {
+      const career = await makeCareer(database, "training-facility-upgrade");
+      const before = await database.query("SELECT training_facilities_level, cash FROM teams WHERE team_id = ?;", [career.teamId]);
+      const level = Number(before[0]!.training_facilities_level);
+      const result = await upgradeTeamFacility(database, { teamId: career.teamId, facility: "training", season: 1 });
+      expect(result.previousLevel).toBe(level);
+      expect(result.newLevel).toBe(level + 1);
+      expect(await database.query("SELECT training_facilities_level FROM teams WHERE team_id = ?;", [career.teamId]))
+        .toEqual([{ training_facilities_level: level + 1 }]);
+      expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id = ?;", [
+        "facility_" + career.teamId + "_S1_training_L" + (level + 1),
+      ])).toEqual([{ category: "facility-upgrade", amount: -result.cost }]);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("does not change cash or level while the team is already overdrawn", async () => {
     const database = await makeDatabase();
     try {

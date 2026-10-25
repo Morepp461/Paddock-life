@@ -1,12 +1,12 @@
 import type { IDatabase } from "../storage/IDatabase";
 import { calculateBalanceAfterTransaction, calculateFacilityUpgradeCost, type EconomyTierId } from "./EconomyEngine";
 
-export type FacilityId = "aero_center" | "engine_dept" | "chassis" | "simulator" | "rnd" | "academy";
+export type FacilityId = "aero_center" | "engine_dept" | "chassis" | "simulator" | "rnd" | "academy" | "training";
 
 export interface FacilityDefinition {
   readonly id: FacilityId;
   readonly label: string;
-  readonly column: "aero_center_level" | "engine_dept_level" | "chassis_level" | "simulator_level" | "rnd_level" | "academy_level";
+  readonly column: "aero_center_level" | "engine_dept_level" | "chassis_level" | "simulator_level" | "rnd_level" | "academy_level" | "training_facilities_level";
 }
 
 export const FACILITY_CATALOG: readonly FacilityDefinition[] = [
@@ -16,6 +16,7 @@ export const FACILITY_CATALOG: readonly FacilityDefinition[] = [
   { id: "simulator", label: "Driver Simulator", column: "simulator_level" },
   { id: "rnd", label: "R&D Department", column: "rnd_level" },
   { id: "academy", label: "Driver Academy", column: "academy_level" },
+  { id: "training", label: "Training Facilities", column: "training_facilities_level" },
 ] as const;
 
 export interface FacilityUpgradeResult {
