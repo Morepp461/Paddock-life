@@ -797,6 +797,29 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       CREATE INDEX idx_staff_contract_events_team ON staff_contract_events(career_id, team_id, season);
     `,
   },
+  {
+    version: 22,
+    description: "audit driver release-clause transfers",
+    sql: `
+      CREATE TABLE driver_transfer_events (
+        event_id TEXT PRIMARY KEY,
+        career_id TEXT NOT NULL REFERENCES career(career_id) ON DELETE CASCADE,
+        driver_id TEXT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+        from_team_id TEXT NOT NULL REFERENCES teams(team_id),
+        to_team_id TEXT NOT NULL REFERENCES teams(team_id),
+        old_contract_id TEXT NOT NULL,
+        new_contract_id TEXT NOT NULL,
+        season INTEGER NOT NULL CHECK (season >= 1),
+        race INTEGER NOT NULL CHECK (race >= 1),
+        release_clause_paid INTEGER NOT NULL CHECK (release_clause_paid > 0),
+        original_contract_json TEXT NOT NULL CHECK (json_valid(original_contract_json)),
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (career_id, old_contract_id)
+      );
+      CREATE INDEX idx_driver_transfer_events_career ON driver_transfer_events(career_id, season, race);
+      CREATE INDEX idx_driver_transfer_events_driver ON driver_transfer_events(career_id, driver_id, season);
+    `,
+  },
 ];
 
 export async function runMigrations(database: IDatabase): Promise<void> {

@@ -28,10 +28,10 @@ describe("local schema migrations", () => {
       "career", "divisions", "teams", "drivers", "driver_contracts",
       "cars", "circuits", "races", "race_results", "finances", "standings",
       "schema_migrations", "team_pool", "name_culture_pool", "nationality_name_cultures", "blocked_names",
-      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "driver_retirement_events", "staff_retirement_events", "driver_loans", "game_config", "car_component_service", "staff_contract_events",
+      "sponsor_pool", "team_sponsors", "sponsor_offers", "career_managers", "staff", "board_objectives", "season_settlements", "manager_job_offers", "development_projects", "development_history", "driver_negotiation_cooldowns", "team_division_history", "world_transition_steps", "board_objective_warnings", "division_promotion_offers", "driver_retirement_events", "staff_retirement_events", "driver_loans", "game_config", "car_component_service", "staff_contract_events", "driver_transfer_events",
     ]));
     const versions = await database.query("SELECT version FROM schema_migrations;");
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 18 }, { version: 19 }, { version: 20 }, { version: 21 }, { version: 22 }]);
     const circuitColumns = await database.query("PRAGMA table_info(circuits);");
     expect(circuitColumns.map((column) => column.name)).toContain("standard_laps");
     expect(circuitColumns.map((column) => column.name)).toContain("estimated_lap_seconds");

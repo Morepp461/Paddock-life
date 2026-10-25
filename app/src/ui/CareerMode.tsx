@@ -470,6 +470,7 @@ export default function CareerMode() {
   const [marketPodiumBonus, setMarketPodiumBonus] = useState("0");
   const [marketChampionshipBonus, setMarketChampionshipBonus] = useState("0");
   const [marketReleaseClause, setMarketReleaseClause] = useState("0");
+  const [marketActivateReleaseClause, setMarketActivateReleaseClause] = useState(false);
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketError, setMarketError] = useState("");
   const [marketResult, setMarketResult] = useState<ContractOfferResult | null>(null);
@@ -507,6 +508,7 @@ export default function CareerMode() {
           if (!cancelled) {
             setMarketDrivers([]);
             setMarketDriverId("");
+            setMarketActivateReleaseClause(false);
             setMarketSeatsAvailable(false);
             setMarketError("Jendela transfer sedang tertutup. Bursa dibuka sebelum race pertama atau pada tiga race pertengahan season.");
           }
@@ -514,28 +516,51 @@ export default function CareerMode() {
         }
         const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;", [String(dashboard.team.team_id), targetSeason, targetSeason, ageOffset, band.min, band.max]);
         if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
-          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
+          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketActivateReleaseClause(false); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
           return;
         }
         if (!cancelled) setMarketSeatsAvailable(true);
+        const midSeasonStart = Math.ceil(TIER_CONFIG[activeSave.tier].roundsPerSeason / 2);
+        const canBuyReleaseClause = targetSeason === season && !seasonComplete
+          && currentRace >= midSeasonStart && currentRace <= midSeasonStart + 2;
         const rows = await database.query(
           `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
-             d.ambition, d.market_value, d.is_academy_driver
+             d.ambition, d.market_value, d.is_academy_driver,
+             (SELECT dc.contract_id FROM driver_contracts dc
+              WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+                AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+              ORDER BY dc.contract_id LIMIT 1) AS release_clause_contract_id,
+             COALESCE((SELECT dc.release_clause FROM driver_contracts dc
+              WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+                AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+              ORDER BY dc.contract_id LIMIT 1), 0) AS active_release_clause
            FROM drivers d
            WHERE d.career_id = ? AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
-             AND NOT EXISTS (
-               SELECT 1 FROM driver_contracts dc
-               WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+             AND (
+               NOT EXISTS (
+                 SELECT 1 FROM driver_contracts dc
+                 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+               )
+               OR (? = 1 AND EXISTS (
+                 SELECT 1 FROM driver_contracts dc
+                 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+                   AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+               ))
              )
            ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
 `,
-          [activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset, targetSeason, targetSeason],
+          [targetSeason, targetSeason, String(dashboard.team.team_id),
+            targetSeason, targetSeason, String(dashboard.team.team_id),
+            activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset,
+            targetSeason, targetSeason, canBuyReleaseClause ? 1 : 0,
+            targetSeason, targetSeason, String(dashboard.team.team_id)],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
           if (!rows.some((row) => field(row, "driver_id") === marketDriverId)) {
             const first = rows[0];
             setMarketDriverId(first ? field(first, "driver_id") : "");
+            setMarketActivateReleaseClause(false);
             if (first) {
               const salary = calculateDriverAskingSalary({ marketValue: numberField(first, "market_value"), ambition: numberField(first, "ambition", 50), demandFactor: generateDriverDemandFactor({ worldSeed: String(dashboard.career.world_seed ?? ""), season: targetSeason, driverId: field(first, "driver_id") }) });
               setMarketSalary(String(salary));
@@ -840,6 +865,9 @@ export default function CareerMode() {
         podiumBonus: Number(marketPodiumBonus),
         championshipBonus: Number(marketChampionshipBonus),
         releaseClause: Number(marketReleaseClause) || null,
+        releaseClauseContractId: marketActivateReleaseClause
+          ? field(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "release_clause_contract_id")
+          : undefined,
         role: marketRole,
       });
       await persistSnapshot(database, activeSave, result.decision === "accepted" ? "contract-signed" : "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
@@ -852,6 +880,7 @@ export default function CareerMode() {
         setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
         setMarketDrivers((rows) => rows.filter((row) => field(row, "driver_id") !== marketDriverId));
         setMarketDriverId("");
+        setMarketActivateReleaseClause(false);
       }
     } catch (caught) {
       setMarketError(caught instanceof Error ? caught.message : "Penawaran kontrak gagal diproses.");
@@ -1208,8 +1237,8 @@ export default function CareerMode() {
         </article>
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>TRANSFER MARKET</small><h2>Recruit a driver</h2></div><span>{marketDrivers.length} eligible drivers</span></div>
-          <p className="muted-text">Daftar berisi free agent dan driver academy yang memenuhi band umur untuk season berikutnya. Kontrak baru dimulai pada season berikutnya agar grid berjalan tidak berubah. Tim harus memiliki kursi kosong.</p>
-          {!marketSeatsAvailable && <p className="inline-error">Dua kursi race saat ini sudah terisi. Rekrutmen akan aktif saat ada kursi kosong; aturan biaya pemutusan kontrak belum didefinisikan di dokumen final.</p>}
+          <p className="muted-text">Daftar menampilkan free agent yang memenuhi band umur untuk target season. Pada jendela mid-season, driver dengan release clause aktif juga tersedia untuk dibeli dari tim asal. Tim harus memiliki kursi kosong.</p>
+          {!marketSeatsAvailable && <p className="inline-error">Dua kursi race tim sudah terisi untuk target season. Bursa akan aktif saat ada kursi kosong.</p>}
           {marketError && <p className="inline-error">{marketError}</p>}
           {marketResult && <div className={marketResult.decision === "accepted" ? "notice success" : "notice"}>
             <strong>{marketResult.decision === "accepted" ? "Contract accepted" : marketResult.decision === "counter-offer" ? "Counter-offer received" : "Offer rejected"}</strong>
@@ -1221,14 +1250,15 @@ export default function CareerMode() {
             <label>Driver<select required value={marketDriverId} onChange={(event) => {
               const id = event.target.value;
               setMarketDriverId(id);
+              setMarketActivateReleaseClause(false);
               const candidate = marketDrivers.find((row) => field(row, "driver_id") === id);
               if (candidate) {
-                const targetSeason = numberField(dashboard.career, "current_season", 1) + 1;
+                const targetSeason = marketTargetSeason;
                 const salary = calculateDriverAskingSalary({ marketValue: numberField(candidate, "market_value"), ambition: numberField(candidate, "ambition", 50), demandFactor: generateDriverDemandFactor({ worldSeed: String(dashboard.career.world_seed ?? ""), season: targetSeason, driverId: id }) });
                 setMarketSalary(String(salary));
               }
               setMarketResult(null);
-            }}><option value="" disabled>Select driver</option>{marketDrivers.map((driver) => <option key={field(driver, "driver_id")} value={field(driver, "driver_id")}>{field(driver, "name")} · Age {field(driver, "age")} · Pace {numberField(driver, "pace").toFixed(0)}{numberField(driver, "is_academy_driver") ? " · Academy" : ""}</option>)}</select></label>
+            }}><option value="" disabled>Select driver</option>{marketDrivers.map((driver) => <option key={field(driver, "driver_id")} value={field(driver, "driver_id")}>{field(driver, "name")} · Age {field(driver, "age")} · Pace {numberField(driver, "pace").toFixed(0)}{numberField(driver, "is_academy_driver") ? " · Academy" : ""}{field(driver, "release_clause_contract_id") ? " · RELEASE CLAUSE " + formatCash(numberField(driver, "active_release_clause")) : ""}</option>)}</select></label>
             <div className="form-grid">
               <label>Annual salary (¢p)<input type="number" min="1" step="1" required value={marketSalary} onChange={(event) => setMarketSalary(event.target.value)} /></label>
               <label>Contract length<select value={marketDuration} onChange={(event) => setMarketDuration(event.target.value)}>{[1, 2, 3, 4].filter((length) => {
@@ -1242,8 +1272,12 @@ export default function CareerMode() {
               <label>Championship bonus (¢p)<input type="number" min="0" step="1" required value={marketChampionshipBonus} onChange={(event) => setMarketChampionshipBonus(event.target.value)} /></label>
               <label>Release clause (¢p)<input type="number" min="0" step="1" required value={marketReleaseClause} onChange={(event) => setMarketReleaseClause(event.target.value)} /><small>0 = no clause; otherwise 1.5–3× annual salary.</small></label>
             </div>
-            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
-          </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
+            {field(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "release_clause_contract_id") && <label className="release-clause-toggle">
+              <input type="checkbox" checked={marketActivateReleaseClause} onChange={(event) => setMarketActivateReleaseClause(event.target.checked)} />
+              Activate release clause buyout: pay {formatCash(numberField(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "active_release_clause"))} to the current team. The driver's new contract offer must still be accepted.
+            </label>}
+            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable || (!!field(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "release_clause_contract_id") && !marketActivateReleaseClause)}>{marketBusy ? "Negotiating…" : marketActivateReleaseClause ? "Buy out clause & offer contract →" : "Submit contract offer →"}</button>
+          </form> : <p className="muted-text">Tidak ada free agent atau driver ber-release-clause yang memenuhi band umur tier ini pada jendela transfer saat ini.</p>}
         </article>
       </section>}
       {tab === "roster" && <YouthLoanPanel
