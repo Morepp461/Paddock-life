@@ -4,6 +4,7 @@ import {
   evaluateContractOffer,
   findSalaryCounterOffer,
   generateDriverDemandFactor,
+  isDriverTransferWindowOpen,
   validateContractDuration,
 } from "./ContractNegotiationEngine";
 
@@ -47,5 +48,34 @@ describe("contract negotiation rules", () => {
     expect(counter?.offeredSalary).toBeGreaterThanOrEqual(735_000);
     expect(counter?.offeredSalary).toBeLessThanOrEqual(875_000);
     expect(counter?.evaluation.score).toBeGreaterThanOrEqual(0.85);
+  });
+});
+
+
+describe("documented driver transfer windows", () => {
+  const base = { currentSeason: 2, targetSeason: 2, roundsPerSeason: 18, seasonComplete: false };
+
+  it("opens before race one and for the three mid-season races", () => {
+    expect(isDriverTransferWindowOpen({ ...base, currentRace: 1 })).toBe(true);
+    for (const currentRace of [9, 10, 11]) {
+      expect(isDriverTransferWindowOpen({ ...base, currentRace })).toBe(true);
+    }
+  });
+
+  it("keeps the market closed outside the transfer window and after season completion", () => {
+    for (const currentRace of [2, 8, 12, 18]) {
+      expect(isDriverTransferWindowOpen({ ...base, currentRace })).toBe(false);
+    }
+    expect(isDriverTransferWindowOpen({ ...base, currentRace: 19, seasonComplete: true })).toBe(false);
+  });
+
+  it("allows next-season recruitment in pre-season or after the full season completes", () => {
+    expect(isDriverTransferWindowOpen({ ...base, targetSeason: 3, currentRace: 1 })).toBe(true);
+    expect(isDriverTransferWindowOpen({ ...base, targetSeason: 3, currentRace: 19, seasonComplete: true })).toBe(true);
+    expect(isDriverTransferWindowOpen({ ...base, targetSeason: 3, currentRace: 5 })).toBe(false);
+  });
+
+  it("validates all window inputs", () => {
+    expect(() => isDriverTransferWindowOpen({ ...base, currentRace: 0 })).toThrow("integer positif");
   });
 });
