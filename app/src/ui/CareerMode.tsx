@@ -528,11 +528,11 @@ export default function CareerMode() {
              d.ambition, d.market_value, d.is_academy_driver,
              (SELECT dc.contract_id FROM driver_contracts dc
               WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-                AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+                AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
               ORDER BY dc.contract_id LIMIT 1) AS release_clause_contract_id,
              COALESCE((SELECT dc.release_clause FROM driver_contracts dc
               WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-                AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+                AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
               ORDER BY dc.contract_id LIMIT 1), 0) AS active_release_clause
            FROM drivers d
            WHERE d.career_id = ? AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
@@ -550,9 +550,11 @@ export default function CareerMode() {
            ORDER BY CASE WHEN release_clause_contract_id IS NOT NULL THEN 1 ELSE 0 END,
              d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
 `,
-          [targetSeason, targetSeason, targetSeason, targetSeason,
+          [targetSeason, targetSeason, String(dashboard.team.team_id),
+            targetSeason, targetSeason, String(dashboard.team.team_id),
             activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset,
-            targetSeason, targetSeason, canBuyReleaseClause ? 1 : 0, targetSeason, targetSeason, String(dashboard.team.team_id)],
+            targetSeason, targetSeason, canBuyReleaseClause ? 1 : 0,
+            targetSeason, targetSeason, String(dashboard.team.team_id)],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
