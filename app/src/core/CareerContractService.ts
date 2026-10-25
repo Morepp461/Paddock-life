@@ -204,20 +204,85 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
   if (score.decision === "accepted") {
     const contractId = "contract_" + hashSeed([
       String(context.career.world_seed), input.careerId, input.teamId, input.driverId,
-      input.startSeason, input.durationSeasons, input.offeredSalary,
+      input.startSeason, input.durationSeasons, input.offeredSalary, input.releaseClauseContractId ?? "",
     ]).toString(16).padStart(8, "0");
     const endSeason = input.startSeason + input.durationSeasons - 1;
     const signingBonus = input.signingBonus ?? 0;
+    const buyoutAmount = context.buyoutContract ? n(context.buyoutContract, "release_clause") : 0;
+    const transferEventId = context.buyoutContract
+      ? "transfer_" + hashSeed([
+        String(context.career.world_seed), input.careerId, input.driverId,
+        String(context.buyoutContract.contract_id), input.teamId, currentSeason, currentRace,
+      ]).toString(16).padStart(8, "0")
+      : null;
+
     await database.transaction(async () => {
-      const balance = calculateBalanceAfterTransaction({
-        currentBalance: n(context.team, "cash"), amount: -signingBonus, tier: context.tier,
+      let buyerCash = n(context.team, "cash");
+      let sellerCash = 0;
+      let currentBuyout: DatabaseRow | undefined;
+      let oldTeamId: string | null = null;
+
+      if (context.buyoutContract) {
+        const buyoutRows = await database.query(
+          "SELECT contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option FROM driver_contracts WHERE contract_id = ? AND driver_id = ? AND start_season <= ? AND end_season >= ?;",
+          [String(context.buyoutContract.contract_id), input.driverId, input.startSeason, input.startSeason],
+        );
+        currentBuyout = buyoutRows[0];
+        if (!currentBuyout || n(currentBuyout, "release_clause") !== buyoutAmount || buyoutAmount <= 0) {
+          throw new Error("Release clause berubah atau kontrak tidak lagi aktif; transfer dibatalkan.");
+        }
+        oldTeamId = String(currentBuyout.team_id);
+        if (oldTeamId === input.teamId) throw new Error("Release clause tidak dapat dibeli dari tim sendiri.");
+        const [buyerRows, sellerRows] = await Promise.all([
+          database.query("SELECT cash FROM teams WHERE team_id = ? AND career_id = ? AND is_active = 1;", [input.teamId, input.careerId]),
+          database.query("SELECT cash FROM teams WHERE team_id = ? AND career_id = ? AND is_active = 1;", [oldTeamId, input.careerId]),
+        ]);
+        if (!buyerRows[0] || !sellerRows[0]) throw new Error("Tim pembeli atau penjual release clause tidak aktif.");
+        buyerCash = n(buyerRows[0], "cash");
+        sellerCash = n(sellerRows[0], "cash");
+        if (buyerCash < 0) throw new Error("Tim tidak dapat membeli release clause saat saldo kas negatif.");
+      } else if (input.releaseClauseContractId) {
+        throw new Error("Kontrak release clause tidak lagi tersedia; transfer dibatalkan.");
+      }
+
+      const afterBuyout = calculateBalanceAfterTransaction({
+        currentBalance: buyerCash, amount: -buyoutAmount, tier: context.tier,
       });
-      if (!balance.withinOverdraft) throw new Error("Signing bonus melewati batas overdraft 25% RequiredBudget.");
+      if (!afterBuyout.withinOverdraft) throw new Error("Biaya release clause melewati batas overdraft 25% RequiredBudget.");
+      const afterSigningBonus = calculateBalanceAfterTransaction({
+        currentBalance: afterBuyout.balanceAfter, amount: -signingBonus, tier: context.tier,
+      });
+      if (!afterSigningBonus.withinOverdraft) throw new Error("Signing bonus melewati batas overdraft 25% RequiredBudget.");
+
+      if (buyoutAmount + signingBonus > 0) {
+        await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [afterSigningBonus.balanceAfter, input.teamId]);
+      }
+      if (context.buyoutContract && currentBuyout && oldTeamId && transferEventId) {
+        const sellerBalance = sellerCash + buyoutAmount;
+        await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [sellerBalance, oldTeamId]);
+        await database.run(
+          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, ?, 'expense', 'driver-release-clause', ?, ?);",
+          ["release-clause-buyout_" + transferEventId, input.teamId, currentSeason, currentRace, -buyoutAmount, afterBuyout.balanceAfter],
+        );
+        await database.run(
+          "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, ?, 'income', 'driver-release-clause-received', ?, ?);",
+          ["release-clause-receipt_" + transferEventId, oldTeamId, currentSeason, currentRace, buyoutAmount, sellerBalance],
+        );
+        await database.run(
+          `INSERT INTO driver_transfer_events
+            (event_id, career_id, driver_id, from_team_id, to_team_id, old_contract_id, new_contract_id,
+             season, race, release_clause_paid, original_contract_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          [transferEventId, input.careerId, input.driverId, oldTeamId, input.teamId,
+            String(currentBuyout.contract_id), contractId, currentSeason, currentRace, buyoutAmount,
+            JSON.stringify(currentBuyout)],
+        );
+        await database.run("DELETE FROM driver_contracts WHERE contract_id = ?;", [String(currentBuyout.contract_id)]);
+      }
       if (signingBonus > 0) {
-        await database.run("UPDATE teams SET cash = ? WHERE team_id = ?;", [balance.balanceAfter, input.teamId]);
         await database.run(
           "INSERT INTO finances (transaction_id, team_id, season, race, type, category, amount, balance_after) VALUES (?, ?, ?, ?, 'expense', 'contract-signing-bonus', ?, ?);",
-          ["contract-bonus_" + contractId, input.teamId, currentSeason, currentRace, -signingBonus, balance.balanceAfter],
+          ["contract-bonus_" + contractId, input.teamId, currentSeason, currentRace, -signingBonus, afterSigningBonus.balanceAfter],
         );
       }
       await database.run(
