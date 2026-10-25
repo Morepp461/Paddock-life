@@ -221,7 +221,7 @@ describe("release-clause driver transfers", () => {
         releaseClauseContractId: "contract_release_test", role: "lead",
       });
       expect(result.decision).toBe("accepted");
-      expect(result.contractId).toBeTruthy();
+      if (!result.contractId) throw new Error("Accepted offer must return a contract ID.");
       expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE contract_id = 'contract_release_test';")).toEqual([{ count: 0 }]);
       expect(await database.query("SELECT team_id, start_season, end_season FROM driver_contracts WHERE contract_id = ?;", [result.contractId])).toEqual([
         { team_id: teamId, start_season: 2, end_season: 3 },
