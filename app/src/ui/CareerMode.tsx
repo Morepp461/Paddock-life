@@ -307,7 +307,6 @@ async function simulateNextRace(
     drivers: raceWeekendDrivers,
   });
   const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));
-  const compoundByDriver = new Map(raceWeekendDrivers.map((driver) => [driver.id, driver.compound]));
   const qualifyingGridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
   const raceGridByDriver = new Map(weekend.raceStartingGrid.map((driverId, index) => [driverId, index + 1]));
   const sprintGridByDriver = new Map((weekend.sprintStartingGrid ?? []).map((driverId, index) => [driverId, index + 1]));
