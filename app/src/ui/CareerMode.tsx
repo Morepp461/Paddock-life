@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, summarizeDriverTyreStrategy, type RaceWeekendResult } from "../core/RaceWeekendEngine";
-import { TIER_CONFIG, type TierId } from "../core/GameConfig";
+import { TIER_CONFIG, type DryTyreCompound, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
 import { calculateCircuitCarScore } from "../core/CircuitCarScore";
 import { calculateWeatherAdaptation } from "../core/WeatherEngine";
+import { planMandatoryDryTwoCompoundStrategy } from "../core/MandatoryDryTyreStrategy";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
@@ -219,7 +220,14 @@ async function upsertTeamStanding(
   }
 }
 
-async function simulateNextRace(database: IDatabase, careerId: string, tier: TierId, seed: string, compound: TyreCompound): Promise<RaceWeekendResult> {
+async function simulateNextRace(
+  database: IDatabase,
+  careerId: string,
+  tier: TierId,
+  seed: string,
+  compound: TyreCompound,
+  pitStrategy?: { readonly secondCompound: DryTyreCompound; readonly pitLap: number; readonly pitLossSeconds: number },
+): Promise<RaceWeekendResult> {
   const careerStateRows = await database.query("SELECT current_season, current_division_tier FROM career WHERE career_id = ?;", [careerId]);
   const careerState = careerStateRows[0];
   if (!careerState) throw new Error("Career tidak ditemukan.");
@@ -258,6 +266,37 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
     compound: numberField(driver, "is_player_team") === 1 ? compound : aiCompound, weatherAdaptation: calculateWeatherAdaptation({ adaptability: numberField(driver, "adaptability"), wetSkill: numberField(driver, "wet_skill") }),
   }));
+  let raceWeekendDrivers = driverInputs;
+  if (pitStrategy && tier <= 3 && trackCondition === "dry") {
+    const sourceDriverById = new Map(raceDrivers.map((driver) => [String(driver.driver_id), driver]));
+    raceWeekendDrivers = driverInputs.map((driver) => {
+      const sourceDriver = sourceDriverById.get(driver.id);
+      if (!sourceDriver) throw new Error("Driver race strategy tidak ditemukan: " + driver.id);
+      const isPlayerDriver = numberField(sourceDriver, "is_player_team") === 1;
+      const strategy = planMandatoryDryTwoCompoundStrategy({
+        tier,
+        totalLaps: Number(race.laps),
+        trackAbrasion: Number(race.abrasion),
+        trackTemperatureCelsius: 25,
+        driverAggression: driver.aggression,
+        mechanicalGrip: driver.mechanicalGrip,
+        driverTyreManagement: driver.tyreManagement,
+        pitLossSeconds: pitStrategy.pitLossSeconds,
+        ...(isPlayerDriver ? {
+          preferredFirstCompound: compound as DryTyreCompound,
+          preferredSecondCompound: pitStrategy.secondCompound,
+          preferredPitLap: pitStrategy.pitLap,
+        } : {}),
+      });
+      return {
+        ...driver,
+        compound: strategy.firstCompound,
+        compoundByLap: strategy.compoundByLap,
+        pitStopByLap: strategy.pitStopByLap,
+        pitLossSecondsByLap: strategy.pitLossSecondsByLap,
+      };
+    });
+  }
   const weekend = simulateRaceWeekend({
     worldSeed: seed, season, round: Number(race.round), tier,
     estimatedCircuitLapSeconds: Number(race.estimated_lap_seconds), totalLaps: Number(race.laps),
@@ -265,7 +304,7 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     trackCondition, referenceSetupScore: 50,
     hasSprint: Number(race.has_sprint) === 1,
     overtakingDifficulty: Number(race.overtaking_difficulty),
-    drivers: driverInputs,
+    drivers: raceWeekendDrivers,
   });
   const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));
   const compoundByDriver = new Map(raceDrivers.map((driver) => [
