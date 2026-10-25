@@ -189,6 +189,13 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
   })) {
     throw new Error("Jendela transfer driver sedang tertutup. Bursa dibuka sebelum race pertama atau pada tiga race pertengahan season yang ditentukan.");
   }
+  if (context.buyoutContract) {
+    const firstMidSeasonRace = Math.ceil(TIER_CONFIG[context.tier].roundsPerSeason / 2);
+    if (input.startSeason !== currentSeason || seasonComplete ||
+        currentRace < firstMidSeasonRace || currentRace > firstMidSeasonRace + 2) {
+      throw new Error("Release clause hanya dapat diaktifkan untuk transfer pada jendela mid-season.");
+    }
+  }
   const score = evaluateContractOffer(context.terms);
   const cooldownRows = await database.query(
     "SELECT last_score, until_season, until_race FROM driver_negotiation_cooldowns WHERE career_id = ? AND driver_id = ? AND team_id = ?;",
