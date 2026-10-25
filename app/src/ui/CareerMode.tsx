@@ -470,6 +470,7 @@ export default function CareerMode() {
   const [marketPodiumBonus, setMarketPodiumBonus] = useState("0");
   const [marketChampionshipBonus, setMarketChampionshipBonus] = useState("0");
   const [marketReleaseClause, setMarketReleaseClause] = useState("0");
+  const [marketActivateReleaseClause, setMarketActivateReleaseClause] = useState(false);
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketError, setMarketError] = useState("");
   const [marketResult, setMarketResult] = useState<ContractOfferResult | null>(null);
