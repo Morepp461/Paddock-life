@@ -519,18 +519,39 @@ export default function CareerMode() {
           return;
         }
         if (!cancelled) setMarketSeatsAvailable(true);
+        const midSeasonStart = Math.ceil(TIER_CONFIG[activeSave.tier].roundsPerSeason / 2);
+        const canBuyReleaseClause = targetSeason === season && !seasonComplete
+          && currentRace >= midSeasonStart && currentRace <= midSeasonStart + 2;
         const rows = await database.query(
           `SELECT d.driver_id, d.name, d.age, d.nationality, d.pace, d.qualifying, d.reputation,
-             d.ambition, d.market_value, d.is_academy_driver
+             d.ambition, d.market_value, d.is_academy_driver,
+             (SELECT dc.contract_id FROM driver_contracts dc
+              WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+                AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+              ORDER BY dc.contract_id LIMIT 1) AS release_clause_contract_id,
+             COALESCE((SELECT dc.release_clause FROM driver_contracts dc
+              WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+                AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+              ORDER BY dc.contract_id LIMIT 1), 0) AS active_release_clause
            FROM drivers d
            WHERE d.career_id = ? AND d.is_retired = 0 AND d.age BETWEEN ? AND ?
-             AND NOT EXISTS (
-               SELECT 1 FROM driver_contracts dc
-               WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+             AND (
+               NOT EXISTS (
+                 SELECT 1 FROM driver_contracts dc
+                 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+               )
+               OR (? = 1 AND EXISTS (
+                 SELECT 1 FROM driver_contracts dc
+                 WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
+                   AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+               ))
              )
-           ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
+           ORDER BY CASE WHEN release_clause_contract_id IS NOT NULL THEN 1 ELSE 0 END,
+             d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
 `,
-          [activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset, targetSeason, targetSeason],
+          [targetSeason, targetSeason, targetSeason, targetSeason,
+            activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset,
+            targetSeason, targetSeason, canBuyReleaseClause ? 1 : 0, targetSeason, targetSeason],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
