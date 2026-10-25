@@ -544,7 +544,7 @@ export default function CareerMode() {
                OR (? = 1 AND EXISTS (
                  SELECT 1 FROM driver_contracts dc
                  WHERE dc.driver_id = d.driver_id AND dc.start_season <= ? AND dc.end_season >= ?
-                   AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
+                   AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
                ))
              )
            ORDER BY CASE WHEN release_clause_contract_id IS NOT NULL THEN 1 ELSE 0 END,
@@ -552,7 +552,7 @@ export default function CareerMode() {
 `,
           [targetSeason, targetSeason, targetSeason, targetSeason,
             activeSave.careerId, Math.max(0, band.min - ageOffset), band.max - ageOffset,
-            targetSeason, targetSeason, canBuyReleaseClause ? 1 : 0, targetSeason, targetSeason],
+            targetSeason, targetSeason, canBuyReleaseClause ? 1 : 0, targetSeason, targetSeason, String(dashboard.team.team_id)],
         );
         if (!cancelled) {
           setMarketDrivers(rows);
