@@ -24,12 +24,13 @@ Use this checklist after installing the APK produced by **Actions → Android De
 - [ ] Check that an error leaves the race scheduled rather than partially committing results.
 
 ## Team operations
-- [ ] Open Drivers and verify current contracted drivers and salaries are shown.
+- [ ] Open Drivers and verify current contracted drivers and salaries are shown. If testing free-agent staff, confirm hiring shows an asking salary and that future race payroll charges it.
 - [ ] Open Transfer Market. Confirm it only lists candidates without a contract for the next season and within the next-season age band.
 - [ ] Confirm the market explains when both race seats are already committed. If a seat is available, submit an offer and verify the displayed accepted/counter-offer/rejected result.
 - [ ] Open Sponsors, accept one offer and decline another. Confirm each decision persists after leaving and reopening the career.
 - [ ] Open Development, start an eligible project, run races to advance it, and verify completion/failure is recorded. Test cancellation and refund separately.
-- [ ] Upgrade a facility when affordable and confirm both the facility level and finance ledger change together.
+- [ ] Upgrade Driver Academy, Training Facilities and another facility when affordable; confirm each level and finance ledger change together.
+- [ ] Check TrainingQuality display follows `0.6 + 0.05 × Training Facilities level`; automatic season-by-season driver growth is not yet connected to live stats.
 - [ ] Open Finance and verify cash, debt, budget, and recent ledger entries are readable.
 - [ ] Complete every scheduled round for the player tier, settle the season, and verify a second settlement attempt is rejected.
 - [ ] If a promotion/stay decision appears, test both paths in separate saves; confirm the next season has a fresh calendar, cars, and two age-eligible AI drivers per active team.
