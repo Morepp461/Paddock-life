@@ -837,10 +837,10 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         training_quality REAL NOT NULL CHECK (training_quality >= 0),
         base_development_rate REAL NOT NULL CHECK (base_development_rate >= 0),
         effective_development_rate REAL NOT NULL CHECK (effective_development_rate >= 0),
-        age_factor REAL NOT NULL CHECK (age_factor >= 0),
+        age_factor REAL NOT NULL,
         potential_remaining REAL NOT NULL CHECK (potential_remaining >= 0),
-        requested_gain REAL NOT NULL CHECK (requested_gain >= 0),
-        actual_gain REAL NOT NULL CHECK (actual_gain >= 0),
+        requested_gain REAL NOT NULL,
+        actual_gain REAL NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (career_id, record_id)
       );
