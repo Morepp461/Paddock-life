@@ -60,6 +60,28 @@ describe("mandatory dry tyre strategy", () => {
     expect(result.laps).toHaveLength(baseInput.totalLaps);
   });
 
+  it("respects explicit player compound and pit-lap preferences", () => {
+    const strategy = planMandatoryDryTwoCompoundStrategy({
+      ...baseInput,
+      tier: 1,
+      preferredFirstCompound: "soft",
+      preferredSecondCompound: "hard",
+      preferredPitLap: 6,
+    });
+    expect(strategy.firstCompound).toBe("soft");
+    expect(strategy.secondCompound).toBe("hard");
+    expect(strategy.pitLap).toBe(6);
+  });
+
+  it("rejects identical compounds and out-of-range preferred pit laps", () => {
+    expect(() => planMandatoryDryTwoCompoundStrategy({
+      ...baseInput, tier: 1, preferredFirstCompound: "medium", preferredSecondCompound: "medium",
+    })).toThrow("dua compound kering yang berbeda");
+    expect(() => planMandatoryDryTwoCompoundStrategy({
+      ...baseInput, tier: 1, preferredPitLap: baseInput.totalLaps,
+    })).toThrow("Pit lap harus");
+  });
+
   it("rejects tiers without the mandatory two-compound dry rule and invalid pit configuration", () => {
     expect(() => planMandatoryDryTwoCompoundStrategy({ ...baseInput, tier: 4 })).toThrow("Tier 1–3");
     expect(() => planMandatoryDryTwoCompoundStrategy({ ...baseInput, tier: 3, pitLossSeconds: 0 })).toThrow("positif");
