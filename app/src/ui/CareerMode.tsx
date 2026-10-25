@@ -547,8 +547,7 @@ export default function CareerMode() {
                    AND dc.team_id <> ? AND dc.release_clause IS NOT NULL AND dc.release_clause > 0
                ))
              )
-           ORDER BY CASE WHEN release_clause_contract_id IS NOT NULL THEN 1 ELSE 0 END,
-             d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
+           ORDER BY d.is_academy_driver ASC, d.reputation DESC, d.pace DESC, d.driver_id
 `,
           [targetSeason, targetSeason, String(dashboard.team.team_id),
             targetSeason, targetSeason, String(dashboard.team.team_id),
