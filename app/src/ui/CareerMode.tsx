@@ -1236,8 +1236,8 @@ export default function CareerMode() {
         </article>
         <article className="career-panel wide-panel">
           <div className="panel-title"><div><small>TRANSFER MARKET</small><h2>Recruit a driver</h2></div><span>{marketDrivers.length} eligible drivers</span></div>
-          <p className="muted-text">Daftar berisi free agent dan driver academy yang memenuhi band umur untuk season berikutnya. Kontrak baru dimulai pada season berikutnya agar grid berjalan tidak berubah. Tim harus memiliki kursi kosong.</p>
-          {!marketSeatsAvailable && <p className="inline-error">Dua kursi race saat ini sudah terisi. Rekrutmen akan aktif saat ada kursi kosong; aturan biaya pemutusan kontrak belum didefinisikan di dokumen final.</p>}
+          <p className="muted-text">Daftar menampilkan free agent yang memenuhi band umur untuk target season. Pada jendela mid-season, driver dengan release clause aktif juga tersedia untuk dibeli dari tim asal. Tim harus memiliki kursi kosong.</p>
+          {!marketSeatsAvailable && <p className="inline-error">Dua kursi race tim sudah terisi untuk target season. Bursa akan aktif saat ada kursi kosong.</p>}
           {marketError && <p className="inline-error">{marketError}</p>}
           {marketResult && <div className={marketResult.decision === "accepted" ? "notice success" : "notice"}>
             <strong>{marketResult.decision === "accepted" ? "Contract accepted" : marketResult.decision === "counter-offer" ? "Counter-offer received" : "Offer rejected"}</strong>
