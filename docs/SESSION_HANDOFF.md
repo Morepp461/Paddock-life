@@ -8,7 +8,7 @@ Source of truth: `Paddock_Life_Docs_FINAL.zip` and the final specification docum
 ## Current verified repository state
 
 - Default branch: `main`
-- Latest verified main commit at handoff: `88f39e0cb943ecf921fb7c32be3bffdd35e16df5`
+- Latest main commit at handoff: `957ba2d2f2c52cd62da13b5e0deb0f7867eb5405`; CI and Android Debug APK workflows were still running at the last check. The preceding main commit `88f39e0cb943ecf921fb7c32be3bffdd35e16df5` had green CI.
 - GitHub Actions on that commit:
   - `CI`: completed successfully.
   - `Android Debug APK`: completed successfully.
