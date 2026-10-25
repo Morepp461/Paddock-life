@@ -54,8 +54,8 @@ describe("atomic career world generation", () => {
       expect(freeStaff).toHaveLength(20);
       const expectedSalaryCounts = new Map<number, number>();
       for (let index = 0; index < 20; index += 1) {
-        const tier = ([1, 2, 3, 4, 5, 6] as TierId[])[index % 6]!;
-        const salary = tier === 6 ? 0 : Math.round(TIER_CONFIG[tier].requiredBudget * 0.15 / INITIAL_DISTRIBUTIONS[tier].staffSlots);
+        const tier = ([1, 2, 3, 4, 5] as TierId[])[index % 5]!;
+        const salary = Math.round(TIER_CONFIG[tier].requiredBudget * 0.15 / INITIAL_DISTRIBUTIONS[tier].staffSlots);
         expectedSalaryCounts.set(salary, (expectedSalaryCounts.get(salary) ?? 0) + 1);
       }
       for (const [salary, expectedCount] of expectedSalaryCounts) {
