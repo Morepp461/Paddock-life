@@ -295,6 +295,32 @@ export function calculateMainRacePoints(tier: TierId, finishPosition: number, fa
   return basePoints + (bonusEligible ? 1 : 0);
 }
 
+export interface DriverTyreStrategySummary {
+  readonly pitStops: number;
+  readonly compounds: readonly import("./TyreEngine").TyreCompound[];
+  readonly serialized: string;
+}
+
+/** Derives persisted strategy details from actual lap results rather than the starting compound. */
+export function summarizeDriverTyreStrategy(
+  result: RaceResult,
+  driverId: string,
+): DriverTyreStrategySummary {
+  if (!driverId.trim()) throw new Error("Driver ID wajib diisi untuk merangkum strategi ban.");
+  const driverLaps = result.laps
+    .map((lap) => lap.find((row) => row.driverId === driverId))
+    .filter((row): row is NonNullable<typeof row> => row !== undefined)
+    .sort((left, right) => left.lap - right.lap);
+  if (driverLaps.length === 0) throw new Error("Tidak ada catatan lap untuk driver " + driverId + ".");
+  const compounds: import("./TyreEngine").TyreCompound[] = [];
+  let pitStops = 0;
+  for (const lap of driverLaps) {
+    if (lap.pitStop) pitStops += 1;
+    if (compounds[compounds.length - 1] !== lap.compound) compounds.push(lap.compound);
+  }
+  return { pitStops, compounds, serialized: compounds.join("→") };
+}
+
 /** Sprint points are fixed at 8–1 for P1–P8 and have no fastest-lap bonus. */
 export function calculateSprintRacePoints(finishPosition: number): number {
   if (!Number.isSafeInteger(finishPosition) || finishPosition < 1) {
