@@ -1064,14 +1064,37 @@ export default function CareerMode() {
     try {
       const seasonRows = await database.query("SELECT current_season FROM career WHERE career_id = ?;", [activeSave.careerId]);
       const nextRaceRows = await database.query(
-        "SELECT track_condition FROM races WHERE division_id = ? AND season = ? AND status = 'scheduled' ORDER BY round LIMIT 1;",
+        "SELECT track_condition, laps FROM races WHERE division_id = ? AND season = ? AND status = 'scheduled' ORDER BY round LIMIT 1;",
         ["T" + activeSave.tier, numberField(seasonRows[0], "current_season", 1)],
       );
-      const trackCondition = parseTrackCondition(nextRaceRows[0]?.track_condition);
+      const nextRaceRow = nextRaceRows[0];
+      if (!nextRaceRow) throw new Error("Semua race season ini sudah selesai.");
+      const trackCondition = parseTrackCondition(nextRaceRow.track_condition);
       const availableCompounds = availableTyreCompounds(activeSave.tier, trackCondition);
       const raceCompound = availableCompounds.includes(selectedTyreCompound)
         ? selectedTyreCompound : recommendedTyreCompound(activeSave.tier, trackCondition);
-      const result = await simulateNextRace(database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""), raceCompound);
+      let pitStrategy: { secondCompound: DryTyreCompound; pitLap: number; pitLossSeconds: number } | undefined;
+      if (activeSave.tier <= 3 && trackCondition === "dry") {
+        const totalLaps = numberField(nextRaceRow, "laps");
+        const pitLap = Number(pitLapInput);
+        const pitLossSeconds = Number(pitLossOverride);
+        const allowedDryCompounds = TIER_CONFIG[activeSave.tier].allowedDryCompounds;
+        if (!Number.isFinite(pitLossSeconds) || pitLossSeconds <= 0) {
+          throw new Error("Dry race Tier 1–3 wajib memakai QA total pit-loss override positif. Nilai ini bukan default resmi game.");
+        }
+        if (!Number.isSafeInteger(pitLap) || pitLap < 2 || pitLap >= totalLaps) {
+          throw new Error("Pilih pit lap antara lap 2 dan lap terakhir dikurangi satu.");
+        }
+        if (!allowedDryCompounds.includes(raceCompound as DryTyreCompound)
+            || !allowedDryCompounds.includes(selectedSecondDryCompound)
+            || raceCompound === selectedSecondDryCompound) {
+          throw new Error("Strategi wajib memakai dua compound kering yang berbeda dan legal untuk tier ini.");
+        }
+        pitStrategy = { secondCompound: selectedSecondDryCompound, pitLap, pitLossSeconds };
+      }
+      const result = await simulateNextRace(
+        database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""), raceCompound, pitStrategy,
+      );
       const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [activeSave.careerId]);
       if (playerTeamRows[0]) {
         try {
