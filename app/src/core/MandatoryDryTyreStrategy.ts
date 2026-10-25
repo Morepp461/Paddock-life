@@ -11,6 +11,10 @@ export interface MandatoryDryStrategyInput {
   readonly driverTyreManagement: number;
   /** Full stop loss supplied by the validated pit configuration for this race. */
   readonly pitLossSeconds: number;
+  /** Optional player preferences; omitted preferences are optimized by the planner. */
+  readonly preferredFirstCompound?: DryTyreCompound;
+  readonly preferredSecondCompound?: DryTyreCompound;
+  readonly preferredPitLap?: number;
 }
 
 export interface MandatoryDryStrategy {
@@ -36,6 +40,23 @@ function validateInput(input: MandatoryDryStrategyInput): void {
   }
   if (!Number.isFinite(input.pitLossSeconds) || input.pitLossSeconds <= 0) {
     throw new RangeError("Pit loss wajib berupa waktu positif dari konfigurasi pit yang tervalidasi.");
+  }
+  const allowed = TIER_CONFIG[input.tier].allowedDryCompounds;
+  for (const [name, compound] of [
+    ["preferredFirstCompound", input.preferredFirstCompound],
+    ["preferredSecondCompound", input.preferredSecondCompound],
+  ] as const) {
+    if (compound !== undefined && !allowed.includes(compound)) {
+      throw new Error(name + " tidak tersedia untuk Tier " + input.tier + ".");
+    }
+  }
+  if (input.preferredFirstCompound && input.preferredSecondCompound
+      && input.preferredFirstCompound === input.preferredSecondCompound) {
+    throw new Error("Strategi wajib memakai dua compound kering yang berbeda.");
+  }
+  if (input.preferredPitLap !== undefined &&
+      (!Number.isSafeInteger(input.preferredPitLap) || input.preferredPitLap < 2 || input.preferredPitLap >= input.totalLaps)) {
+    throw new RangeError("Pit lap harus antara lap 2 dan lap terakhir dikurangi satu.");
   }
 }
 
@@ -85,10 +106,16 @@ export function planMandatoryDryTwoCompoundStrategy(input: MandatoryDryStrategyI
   if (compounds.length < 2) throw new Error("Tier ini tidak memiliki dua compound kering yang berbeda.");
   let best: MandatoryDryStrategy | null = null;
 
-  for (const firstCompound of compounds) {
-    for (const secondCompound of compounds) {
+  const firstCandidates = input.preferredFirstCompound ? [input.preferredFirstCompound] : compounds;
+  const secondCandidates = input.preferredSecondCompound ? [input.preferredSecondCompound] : compounds;
+  const pitLapCandidates = input.preferredPitLap !== undefined
+    ? [input.preferredPitLap]
+    : Array.from({ length: input.totalLaps - 2 }, (_, index) => index + 2);
+
+  for (const firstCompound of firstCandidates) {
+    for (const secondCompound of secondCandidates) {
       if (firstCompound === secondCompound) continue;
-      for (let pitLap = 2; pitLap < input.totalLaps; pitLap += 1) {
+      for (const pitLap of pitLapCandidates) {
         const compoundByLap = Array.from(
           { length: input.totalLaps },
           (_, index) => index + 1 < pitLap ? firstCompound : secondCompound,
