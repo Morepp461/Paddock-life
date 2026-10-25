@@ -308,8 +308,8 @@ export function summarizeDriverTyreStrategy(
 ): DriverTyreStrategySummary {
   if (!driverId.trim()) throw new Error("Driver ID wajib diisi untuk merangkum strategi ban.");
   const driverLaps = result.laps
-    .map((lap) => lap.find((row) => row.driverId === driverId))
-    .filter((row): row is NonNullable<typeof row> => row !== undefined)
+    .flat()
+    .filter((row) => row.driverId === driverId)
     .sort((left, right) => left.lap - right.lap);
   if (driverLaps.length === 0) throw new Error("Tidak ada catatan lap untuk driver " + driverId + ".");
   const compounds: import("./TyreEngine").TyreCompound[] = [];
