@@ -18,7 +18,7 @@ import { checkBoardObjectiveMidseason } from "../core/BoardObjectiveWarningServi
 import { prepareDivisionPromotionOffer, resolveDivisionPromotionChoice } from "../core/DivisionPromotionService";
 import { offerDriverContract, type ContractOfferResult } from "../core/CareerContractService";
 import { hireFreeAgentStaff } from "../core/StaffContractService";
-import { calculateDriverAskingSalary, generateDriverDemandFactor } from "../core/ContractNegotiationEngine";
+import { calculateDriverAskingSalary, generateDriverDemandFactor, isDriverTransferWindowOpen } from "../core/ContractNegotiationEngine";
 import { cancelCareerDevelopmentProject, startCareerDevelopmentProject, advanceCareerDevelopmentProjectsAfterRace } from "../core/CareerDevelopmentService";
 import { DEVELOPMENT_CATALOG, getDevelopmentProjectName, validateDevelopmentSelection } from "../core/DevelopmentCatalog";
 import { calculateDevelopmentProjectCost, calculateFacilityUpgradeCost, type DevelopmentProjectSize } from "../core/EconomyEngine";
@@ -446,11 +446,34 @@ export default function CareerMode() {
       try {
         setMarketError("");
         const season = numberField(dashboard.career, "current_season", 1);
+        const currentRace = numberField(dashboard.career, "current_race", 1);
+        const seasonStatus = await database.query(
+          "SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed FROM races WHERE season = ?;",
+          [season],
+        );
+        const totalSeasonRaces = numberField(seasonStatus[0], "total");
+        const completedSeasonRaces = numberField(seasonStatus[0], "completed");
+        const seasonComplete = totalSeasonRaces > 0 && completedSeasonRaces === totalSeasonRaces;
         const band = TIER_CONFIG[activeSave.tier].driverAge;
         const currentSeats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age BETWEEN ? AND ?;", [String(dashboard.team.team_id), season, season, band.min, band.max]);
-        const targetSeason = numberField(currentSeats[0], "occupied_seats") < 2 ? season : season + 1;
+        const targetSeason = seasonComplete ? season + 1 : numberField(currentSeats[0], "occupied_seats") < 2 ? season : season + 1;
         const ageOffset = targetSeason - season;
         setMarketTargetSeason(targetSeason);
+        if (!isDriverTransferWindowOpen({
+          currentSeason: season,
+          targetSeason,
+          currentRace,
+          roundsPerSeason: TIER_CONFIG[activeSave.tier].roundsPerSeason,
+          seasonComplete,
+        })) {
+          if (!cancelled) {
+            setMarketDrivers([]);
+            setMarketDriverId("");
+            setMarketSeatsAvailable(false);
+            setMarketError("Jendela transfer sedang tertutup. Bursa dibuka sebelum race pertama atau pada tiga race pertengahan season.");
+          }
+          return;
+        }
         const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;", [String(dashboard.team.team_id), targetSeason, targetSeason, ageOffset, band.min, band.max]);
         if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
           if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }

@@ -144,6 +144,7 @@ describe("career contract service", () => {
   it("records rejection reasons and blocks same-score re-negotiation for one race", async () => {
     const { database, career, teamId, driver } = await setup();
     try {
+      await database.run("UPDATE career SET current_season = 2, current_race = 9 WHERE career_id = ?;", [career.careerId]);
       const input = {
         careerId: career.careerId, teamId, driverId: String(driver.driver_id),
         startSeason: 2, durationSeasons: 1, offeredSalary: 0, role: "second" as const,
@@ -152,12 +153,33 @@ describe("career contract service", () => {
       expect(result.decision).toBe("rejected");
       expect(result.rejectionReasons).toHaveLength(2);
       await expect(offerDriverContract(database, input)).rejects.toThrow("satu race");
-      await database.run("UPDATE career SET current_race = 2 WHERE career_id = ?;", [career.careerId]);
+      await database.run("UPDATE career SET current_race = 10 WHERE career_id = ?;", [career.careerId]);
       const afterOneRace = await offerDriverContract(database, input);
       expect(afterOneRace.decision).toBe("rejected");
       expect(await database.query("SELECT COUNT(*) AS count FROM driver_negotiation_cooldowns WHERE career_id = ? AND driver_id = ? AND team_id = ?;", [
         career.careerId, String(driver.driver_id), teamId,
       ])).toEqual([{ count: 1 }]);
+    } finally {
+      await database.close();
+    }
+  });
+});
+
+
+describe("career transfer window enforcement", () => {
+  it("blocks a new driver contract outside the documented transfer windows", async () => {
+    const { database, career, teamId, driver } = await setup();
+    try {
+      await database.run("UPDATE career SET current_season = 2, current_race = 2 WHERE career_id = ?;", [career.careerId]);
+      await expect(offerDriverContract(database, {
+        careerId: career.careerId,
+        teamId,
+        driverId: String(driver.driver_id),
+        startSeason: 2,
+        durationSeasons: 2,
+        offeredSalary: 100_000,
+        role: "lead",
+      })).rejects.toThrow("Jendela transfer driver sedang tertutup");
     } finally {
       await database.close();
     }
