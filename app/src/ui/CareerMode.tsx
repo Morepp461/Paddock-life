@@ -508,6 +508,7 @@ export default function CareerMode() {
           if (!cancelled) {
             setMarketDrivers([]);
             setMarketDriverId("");
+            setMarketActivateReleaseClause(false);
             setMarketSeatsAvailable(false);
             setMarketError("Jendela transfer sedang tertutup. Bursa dibuka sebelum race pertama atau pada tiga race pertengahan season.");
           }
@@ -515,7 +516,7 @@ export default function CareerMode() {
         }
         const seats = await database.query("SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;", [String(dashboard.team.team_id), targetSeason, targetSeason, ageOffset, band.min, band.max]);
         if (Number(seats[0]?.occupied_seats ?? 0) >= 2) {
-          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
+          if (!cancelled) { setMarketDrivers([]); setMarketDriverId(""); setMarketActivateReleaseClause(false); setMarketSeatsAvailable(false); setMarketError("Dua kursi race tim sudah terisi untuk season " + targetSeason + ". Bursa akan terbuka jika ada kursi kosong."); }
           return;
         }
         if (!cancelled) setMarketSeatsAvailable(true);
@@ -558,6 +559,7 @@ export default function CareerMode() {
           if (!rows.some((row) => field(row, "driver_id") === marketDriverId)) {
             const first = rows[0];
             setMarketDriverId(first ? field(first, "driver_id") : "");
+            setMarketActivateReleaseClause(false);
             if (first) {
               const salary = calculateDriverAskingSalary({ marketValue: numberField(first, "market_value"), ambition: numberField(first, "ambition", 50), demandFactor: generateDriverDemandFactor({ worldSeed: String(dashboard.career.world_seed ?? ""), season: targetSeason, driverId: field(first, "driver_id") }) });
               setMarketSalary(String(salary));
