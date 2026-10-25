@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { type RaceResult } from "../core/RaceEngine";
-import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, type RaceWeekendResult } from "../core/RaceWeekendEngine";
+import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, summarizeDriverTyreStrategy, type RaceWeekendResult } from "../core/RaceWeekendEngine";
 import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
 import { calculateCircuitCarScore } from "../core/CircuitCarScore";
@@ -290,10 +290,11 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
         const teamId = teamByDriver.get(row.driverId);
         if (!teamId) throw new Error("Tim driver sprint tidak ditemukan.");
         const points = calculateSprintRacePoints(row.position);
+        const tyreStrategy = summarizeDriverTyreStrategy(weekend.sprint!, row.driverId);
         await database.run(
-          "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
+          "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'sprint', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);",
           [String(race.race_id), row.driverId, teamId, sprintGridByDriver.get(row.driverId) ?? qualifyingGridByDriver.get(row.driverId) ?? null, row.position,
-            weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, compoundByDriver.get(row.driverId) ?? TIER_CONFIG[tier].allowedDryCompounds[0]!, points, row.cumulativeTimeSeconds],
+            weekend.sprint.totalLaps, fastestSprintDrivers.has(row.driverId) ? 1 : 0, tyreStrategy.pitStops, tyreStrategy.serialized, points, row.cumulativeTimeSeconds],
         );
         await upsertDriverStanding(database, tier, season, String(race.race_id) + "_sprint", row.driverId, points);
       }
@@ -312,10 +313,11 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
       if (!teamId) throw new Error("Tim driver race tidak ditemukan.");
       const fastestLap = fastestRaceDrivers.has(row.driverId) ? 1 : 0;
       const points = calculateMainRacePoints(tier, row.position, fastestLap === 1);
+      const tyreStrategy = summarizeDriverTyreStrategy(weekend.race, row.driverId);
       await database.run(
-        "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?);",
+        "INSERT INTO race_results (race_id, session_type, driver_id, team_id, grid_position, finish_position, laps_completed, fastest_lap, pit_stops, tyre_strategy, points, dnf, race_time) VALUES (?, 'race', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);",
         [String(race.race_id), row.driverId, teamId, raceGridByDriver.get(row.driverId) ?? qualifyingGridByDriver.get(row.driverId) ?? null, row.position,
-          weekend.race.totalLaps, fastestLap, compoundByDriver.get(row.driverId) ?? TIER_CONFIG[tier].allowedDryCompounds[0]!, points, row.cumulativeTimeSeconds],
+          weekend.race.totalLaps, fastestLap, tyreStrategy.pitStops, tyreStrategy.serialized, points, row.cumulativeTimeSeconds],
       );
       await upsertDriverStanding(database, tier, season, String(race.race_id), row.driverId, points,
         row.position === 1 ? 1 : 0, row.position <= 3 ? 1 : 0, fastestLap);
