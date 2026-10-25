@@ -439,6 +439,9 @@ export default function CareerMode() {
   const [tab, setTab] = useState<Tab>("overview");
   const [runningRace, setRunningRace] = useState(false);
   const [selectedTyreCompound, setSelectedTyreCompound] = useState<TyreCompound>("medium");
+  const [selectedSecondDryCompound, setSelectedSecondDryCompound] = useState<DryTyreCompound>("hard");
+  const [pitLapInput, setPitLapInput] = useState("");
+  const [pitLossOverride, setPitLossOverride] = useState("");
   const [settlingSeason, setSettlingSeason] = useState(false);
   const [seasonProgress, setSeasonProgress] = useState("");
   const [settlementError, setSettlementError] = useState("");
