@@ -862,6 +862,9 @@ export default function CareerMode() {
         podiumBonus: Number(marketPodiumBonus),
         championshipBonus: Number(marketChampionshipBonus),
         releaseClause: Number(marketReleaseClause) || null,
+        releaseClauseContractId: marketActivateReleaseClause
+          ? field(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "release_clause_contract_id")
+          : undefined,
         role: marketRole,
       });
       await persistSnapshot(database, activeSave, result.decision === "accepted" ? "contract-signed" : "major-transaction", field(dashboard.career, "game_mode") === "sandbox");
@@ -874,6 +877,7 @@ export default function CareerMode() {
         setDashboard(await loadDashboard(database, activeSave.careerId, String(dashboard.team.team_id), activeSave.tier));
         setMarketDrivers((rows) => rows.filter((row) => field(row, "driver_id") !== marketDriverId));
         setMarketDriverId("");
+        setMarketActivateReleaseClause(false);
       }
     } catch (caught) {
       setMarketError(caught instanceof Error ? caught.message : "Penawaran kontrak gagal diproses.");
