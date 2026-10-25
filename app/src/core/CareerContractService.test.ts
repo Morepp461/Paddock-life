@@ -257,6 +257,30 @@ describe("release-clause driver transfers", () => {
     }
   });
 
+  it("rolls back the buyout when the release clause exceeds the overdraft limit", async () => {
+    const { database, career, teamId, driver, sellerTeamId, sellerCash } = await setupBuyout();
+    try {
+      await database.run("UPDATE teams SET cash = 1000000 WHERE team_id = ?;", [teamId]);
+      await database.run("UPDATE driver_contracts SET release_clause = 50000000 WHERE contract_id = 'contract_release_test';");
+      const askingSalary = calculateDriverAskingSalary({
+        marketValue: Number(driver.market_value),
+        ambition: Number(driver.ambition),
+        demandFactor: generateDriverDemandFactor({ worldSeed: "contract-service-test", season: 2, driverId: String(driver.driver_id) }),
+      });
+      await expect(offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: Math.round(askingSalary * 1.2),
+        championshipBonus: askingSalary, releaseClauseContractId: "contract_release_test", role: "lead",
+      })).rejects.toThrow("release clause melewati batas overdraft");
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE contract_id = 'contract_release_test';")).toEqual([{ count: 1 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_transfer_events;")).toEqual([{ count: 0 }]);
+      expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [teamId])).toEqual([{ cash: 1000000 }]);
+      expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [sellerTeamId])).toEqual([{ cash: sellerCash }]);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("blocks a release-clause transfer outside the mid-season window without changing the contract", async () => {
     const { database, career, teamId, driver } = await setupBuyout();
     try {
