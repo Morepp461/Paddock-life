@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { SqlJsDatabase } from "../storage/SqlJsDatabase";
 import { runMigrations } from "../storage/Migrations";
 import { generateCareerWorld } from "./CareerWorldGenerator";
+import { INITIAL_DISTRIBUTIONS } from "../core/InitialDistributions";
+import { TIER_CONFIG, type TierId } from "../core/GameConfig";
 import { loadTeamPoolSeedFromPublic } from "./TeamSeedLoader";
 
 async function makeDatabase() {
@@ -48,6 +50,17 @@ describe("atomic career world generation", () => {
       expect(await database.query("SELECT COUNT(*) AS count FROM finances;")).toEqual([{ count: 144 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 270 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND gender IN ('male', 'female');", [result.careerId])).toEqual([{ count: 270 }]);
+      const freeStaff = await database.query("SELECT salary FROM staff WHERE career_id = ? AND team_id IS NULL AND is_free_agent = 1;", [result.careerId]);
+      expect(freeStaff).toHaveLength(20);
+      const expectedSalaryCounts = new Map<number, number>();
+      for (let index = 0; index < 20; index += 1) {
+        const tier = ([1, 2, 3, 4, 5] as TierId[])[index % 5]!;
+        const salary = Math.round(TIER_CONFIG[tier].requiredBudget * 0.15 / INITIAL_DISTRIBUTIONS[tier].staffSlots);
+        expectedSalaryCounts.set(salary, (expectedSalaryCounts.get(salary) ?? 0) + 1);
+      }
+      for (const [salary, expectedCount] of expectedSalaryCounts) {
+        expect(freeStaff.filter((row) => Number(row.salary) === salary)).toHaveLength(expectedCount);
+      }
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND created_season = 1;", [result.careerId])).toEqual([{ count: 270 }]);
       expect(await database.query("SELECT COUNT(DISTINCT lower(name)) AS count FROM drivers WHERE career_id = ?;", [result.careerId])).toEqual([{ count: 270 }]);
       expect(await database.query("SELECT COUNT(*) AS count FROM drivers WHERE career_id = ? AND is_academy_driver = 1;", [result.careerId])).toEqual([{ count: 96 }]);
