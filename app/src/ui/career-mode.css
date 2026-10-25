@@ -28,3 +28,5 @@
 .race-strategy-grid{grid-template-columns:minmax(0,1fr);max-width:320px;margin:0 0 18px}
 
 .release-clause-toggle{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--cm-border);background:var(--cm-panel-soft);font-size:12px;line-height:1.5;color:var(--cm-muted)}.release-clause-toggle input{width:auto;min-width:16px;margin-top:2px;accent-color:var(--cm-red)}
+
+.training-quality{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--cm-line);padding-top:8px;margin-top:8px}.training-quality span{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;color:var(--cm-muted)}.training-quality b{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--cm-gold)}
