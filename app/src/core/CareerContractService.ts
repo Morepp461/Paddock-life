@@ -25,6 +25,8 @@ export type DriverContractOfferInput = {
   readonly podiumBonus?: number;
   readonly championshipBonus?: number;
   readonly releaseClause?: number | null;
+  /** Active contract to buy out using its pre-agreed release clause. */
+  readonly releaseClauseContractId?: string;
   readonly role: "lead" | "second";
 };
 export interface ContractOfferResult {
@@ -88,10 +90,28 @@ async function contractContext(database: IDatabase, input: DriverContractOfferIn
   if (ageAtStart < band.min || ageAtStart > band.max) throw new Error("Umur driver di luar rentang tier untuk season kontrak dimulai.");
   validateContractDuration(input.durationSeasons, ageAtStart);
   const activeContracts = await database.query(
-    "SELECT contract_id, team_id, end_season FROM driver_contracts WHERE driver_id = ? AND start_season <= ? AND end_season >= ?;",
+    "SELECT contract_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option FROM driver_contracts WHERE driver_id = ? AND start_season <= ? AND end_season >= ?;",
     [input.driverId, input.startSeason, input.startSeason],
   );
-  if (activeContracts.length) throw new Error("Driver sudah memiliki kontrak aktif pada season yang ditawarkan.");
+  let buyoutContract: DatabaseRow | undefined;
+  if (activeContracts.length > 0) {
+    if (!input.releaseClauseContractId || activeContracts.length !== 1 ||
+        String(activeContracts[0]!.contract_id) !== input.releaseClauseContractId) {
+      throw new Error("Driver sudah memiliki kontrak aktif. Transfer hanya dapat dilakukan dengan mengaktifkan release clause kontrak tersebut.");
+    }
+    buyoutContract = activeContracts[0]!;
+    if (String(buyoutContract.team_id) === input.teamId) {
+      throw new Error("Release clause tidak dapat digunakan untuk membeli kontrak milik tim sendiri.");
+    }
+    if (n(buyoutContract, "release_clause") <= 0) {
+      throw new Error("Kontrak aktif driver tidak memiliki release clause yang dapat diaktifkan.");
+    }
+    if (n(team, "cash") < 0) {
+      throw new Error("Tim tidak dapat membeli release clause saat saldo kas negatif.");
+    }
+  } else if (input.releaseClauseContractId) {
+    throw new Error("Kontrak release clause yang dipilih tidak lagi aktif pada season target.");
+  }
   const ageOffset = Math.max(0, input.startSeason - n(career, "current_season", 1));
   const teamSeatRows = await database.query(
     "SELECT COUNT(DISTINCT dc.driver_id) AS occupied_seats FROM driver_contracts dc JOIN drivers d ON d.driver_id = dc.driver_id WHERE dc.team_id = ? AND dc.start_season <= ? AND dc.end_season >= ? AND d.is_retired = 0 AND d.is_academy_driver = 0 AND d.age + ? BETWEEN ? AND ?;",
@@ -129,7 +149,7 @@ async function contractContext(database: IDatabase, input: DriverContractOfferIn
   const roleScore = input.role === "lead" ? 1 : 0.7;
   const lengthScore = preferredLengthScore(ageAtStart, n(driver, "ambition"), input.durationSeasons);
   return {
-    career, team, driver, tier, ageAtStart, askingSalary,
+    career, team, driver, tier, ageAtStart, askingSalary, buyoutContract,
     terms: {
       offeredSalary: input.offeredSalary, askingSalary, roleScore, prestigeScore,
       titleChanceScore, lengthScore, loyaltyAmbitionScore, bonusScore, clausePenalty,
