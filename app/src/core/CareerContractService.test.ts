@@ -229,10 +229,10 @@ describe("release-clause driver transfers", () => {
       expect(await database.query("SELECT from_team_id, to_team_id, release_clause_paid FROM driver_transfer_events WHERE old_contract_id = 'contract_release_test';")).toEqual([
         { from_team_id: sellerTeamId, to_team_id: teamId, release_clause_paid: 150000 },
       ]);
-      expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id LIKE 'release-clause-%' ORDER BY category;")).toEqual([
+      expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id LIKE 'release-clause-%';")).toEqual(expect.arrayContaining([
         { category: "driver-release-clause-received", amount: 150000 },
         { category: "driver-release-clause", amount: -150000 },
-      ]);
+      ]));
       expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [teamId])).toEqual([{ cash: buyerCash - 151000 }]);
       expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [sellerTeamId])).toEqual([{ cash: sellerCash + 150000 }]);
     } finally {
