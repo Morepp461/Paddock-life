@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculateBaseLapSeconds, calculatePerformanceDeltaSeconds, TIER_CONFIG, type TierId } from "./GameConfig";
 import { hashSeed, sampleBoundedNormal } from "./RandomDistributions";
 import { SeededRandom } from "./SeededRandom";
-import { calculateMainRacePoints, calculateSprintRacePoints, calculateStartingGrid, simulateRaceWeekend, type RaceWeekendDriver } from "./RaceWeekendEngine";
+import { calculateMainRacePoints, calculateSprintRacePoints, calculateStartingGrid, simulateRaceWeekend, summarizeDriverTyreStrategy, type RaceWeekendDriver } from "./RaceWeekendEngine";
 import type { WeatherTransitionMatrix } from "./WeatherEngine";
 import { planMandatoryDryTwoCompoundStrategy } from "./MandatoryDryTyreStrategy";
 
@@ -242,6 +242,10 @@ describe("race weekend orchestration", () => {
     expect(result.sprint?.laps.flat().some((row) => row.pitStop)).toBe(false);
     expect(result.race.laps[strategy.pitLap - 1]!.find((row) => row.driverId === roster[0]!.id)?.pitStop).toBe(true);
     expect(result.race.laps[strategy.pitLap - 1]!.find((row) => row.driverId === roster[0]!.id)?.pitLossSeconds).toBe(24);
+    const summary = summarizeDriverTyreStrategy(result.race, roster[0]!.id);
+    expect(summary.pitStops).toBe(1);
+    expect(summary.compounds).toEqual([strategy.firstCompound, strategy.secondCompound]);
+    expect(summary.serialized).toBe(strategy.firstCompound + "→" + strategy.secondCompound);
   });
 
   it("does not create a sprint session when the calendar round has no sprint", () => {
