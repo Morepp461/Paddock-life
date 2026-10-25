@@ -1,6 +1,6 @@
 # Paddock Life — Session Handoff
 
-Last updated: 2026-10-23
+Last updated: 2026-10-25
 Resume keyword: **Lanjut Paddock life**
 Repository: https://github.com/Morepp461/Paddock-life
 Source of truth: `Paddock_Life_Docs_FINAL.zip` and the final specification documents in the project repository. Never invent missing game rules, probabilities, configuration values, or economy balance.
@@ -8,7 +8,7 @@ Source of truth: `Paddock_Life_Docs_FINAL.zip` and the final specification docum
 ## Current verified repository state
 
 - Default branch: `main`
-- Latest verified main commit at handoff: `b41af5ef4039e436d212c4e6ffe65293d49ba148`
+- Latest verified main commit at handoff: `88f39e0cb943ecf921fb7c32be3bffdd35e16df5`
 - GitHub Actions on that commit:
   - `CI`: completed successfully.
   - `Android Debug APK`: completed successfully.
@@ -23,9 +23,9 @@ Source of truth: `Paddock_Life_Docs_FINAL.zip` and the final specification docum
 
 - Monorepo: React + TypeScript + Vite + Capacitor Android app, SQLite local-first storage, CI and Android debug APK workflow.
 - Deterministic RNG and race/simulation engines; qualifying classification, calendar, tyre wear/pace, weather engine, pit-stop engine, incident engine, reliability engine, neutralization engine, race reporting, overtaking-related configuration and race weekend orchestration.
-- Race-weekend result persistence, driver/constructor standings and points, sprint support where the calendar says so, grid persistence, circuit condition/overtaking difficulty, QA workbench.
+- Race-weekend result persistence, driver/constructor standings and points, sprint support where the calendar says so, grid persistence, circuit condition/overtaking difficulty, QA workbench. Recent fixes persist and display actual pit-stop counts and compound sequences from lap results; this does not itself wire pit strategy into the live career race.
 - Source data: 30 circuits, 72 teams, 3,325 names across 52 cultures and 199 country profiles, blocked full names, 100 sponsor entries. Seed validation exists.
-- Career creation/world generation for new team or takeover, local SQLite career data, roster/staff/manager generation, sponsor offers, save-slot discovery, and two free career slots.
+- Career creation/world generation for new team or takeover, local SQLite career data, roster/staff/manager generation, sponsor offers, save-slot discovery, and two free career slots. Driver market/contract offers now enforce the documented pre-race-one and mid-season transfer windows in both service and UI; mid-season active-contract buyout/release-clause transfers remain incomplete.
 - Board objectives: source-backed objectives, standings/finance/unlock results, confidence/reputation, consecutive misses, dismissal eligibility and manager job offers; repeated resolution is idempotent. Documented 50%/80% mid-season warnings are persisted.
 - Sponsor offer acceptance/rejection and active contracts.
 - Source-backed economy, opening balance and entry-fee ledger, per-round operating/payroll expenses, overdraft limits, atomic finance writes, and idempotent season settlement (prize money, commercial revenue, achieved sponsor targets, interest, facility maintenance).
@@ -66,7 +66,7 @@ Work in this order unless tests reveal a more urgent correctness or data-safety 
 - Do not invent missing balance values. Keep source-backed gaps documented.
 
 ### Batch 5 — Save/load integrity and recovery
-- Validate native Capacitor SQLite operation on Android, save discovery/resume, two rotating backups, checksums, corruption handling and atomic restore.
+- Validate native Capacitor SQLite operation on Android, save discovery/resume, two rotating backups, checksums, corruption handling and atomic restore. A quota-failure recovery test is pending in PR #141.
 - Add device-level fault injection and IndexedDB quota/unavailable-path tests where applicable.
 - Verify automatic snapshots around career creation, race weekend, sponsor/contract/development transactions and settlement.
 - Test interrupted writes and foreign-key failures without destroying a valid save.
