@@ -35,7 +35,8 @@ Source of truth: `Paddock_Life_Docs_FINAL.zip` and the final specification docum
 Work in this order unless tests reveal a more urgent correctness or data-safety issue. Each batch needs source-document traceability, tests, a review, and green CI before merge.
 
 ### Batch 1 — Complete race-kernel integration
-- Orchestrate pit stops, mandatory compound strategy where documented, DRS activation windows, incidents, component failures, weather transitions, safety car/VSC, red-flag recovery and their effects into actual career race results.
+- Career Mode now enforces the mandatory dry two-compound strategy for Tier 1–3 player races using an explicit QA total-pit-loss override; do not treat that override as an official pit-time default.
+- Complete PitStopEngine integration with source-backed timing/error config, then integrate DRS activation windows, incidents, component failures, weather transitions, safety car/VSC and red-flag recovery into actual career race results.
 - Wire pit-stop rules by tier, tyre restrictions, track condition and reliability/component history.
 - Wire the documented FormModifier update.
 - Replace the temporary 25°C race-temperature placeholder only when the source provides valid circuit temperature data; otherwise preserve an explicit unresolved configuration gap rather than inventing values.
@@ -52,7 +53,7 @@ Work in this order unless tests reveal a more urgent correctness or data-safety 
 ### Batch 3 — Complete roster and contract management
 - Finish player driver release/transfer, recruitment, staff hiring, contract negotiation and roster-management screens.
 - Verify contract validation, season bounds, salary/finance ledger effects, vacancy filling and legal grid sizes.
-- Resolve the current contract-related open PR chain only after checking ancestry, CI and the generated roster baseline; never merge a test-only workaround that hides a real rule violation.
+- Check the live pull-request list and branch ancestry before merging anything; never merge a test-only workaround that hides a real rule violation.
 
 ### Batch 4 — Development, facilities and long-term balance
 - Verify player-facing development lifecycle and facility upgrades end to end across tiers/seasons.
