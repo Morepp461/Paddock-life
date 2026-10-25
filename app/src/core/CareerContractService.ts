@@ -7,6 +7,7 @@ import {
   evaluateContractOffer,
   findSalaryCounterOffer,
   generateDriverDemandFactor,
+  isDriverTransferWindowOpen,
   validateContractDuration,
   type ContractAcceptanceTerms,
   type ContractOfferEvaluation,
@@ -150,9 +151,25 @@ export async function offerDriverContract(database: IDatabase, input: DriverCont
     throw new RangeError("Release clause harus 1.5–3 kali gaji tahunan, atau 0 jika tanpa klausul.");
   }
   const context = await contractContext(database, input);
-  const score = evaluateContractOffer(context.terms);
   const currentSeason = n(context.career, "current_season", 1);
   const currentRace = n(context.career, "current_race", 1);
+  const seasonStatus = await database.query(
+    "SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed FROM races WHERE season = ?;",
+    [currentSeason],
+  );
+  const totalSeasonRaces = n(seasonStatus[0], "total");
+  const completedSeasonRaces = n(seasonStatus[0], "completed");
+  const seasonComplete = totalSeasonRaces > 0 && completedSeasonRaces === totalSeasonRaces;
+  if (!isDriverTransferWindowOpen({
+    currentSeason,
+    targetSeason: input.startSeason,
+    currentRace,
+    roundsPerSeason: TIER_CONFIG[context.tier].roundsPerSeason,
+    seasonComplete,
+  })) {
+    throw new Error("Jendela transfer driver sedang tertutup. Bursa dibuka sebelum race pertama atau pada tiga race pertengahan season yang ditentukan.");
+  }
+  const score = evaluateContractOffer(context.terms);
   const cooldownRows = await database.query(
     "SELECT last_score, until_season, until_race FROM driver_negotiation_cooldowns WHERE career_id = ? AND driver_id = ? AND team_id = ?;",
     [input.careerId, input.driverId, input.teamId],
