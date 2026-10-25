@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { type RaceResult } from "../core/RaceEngine";
 import { calculateMainRacePoints, calculateSprintRacePoints, simulateRaceWeekend, summarizeDriverTyreStrategy, type RaceWeekendResult } from "../core/RaceWeekendEngine";
-import { TIER_CONFIG, type TierId } from "../core/GameConfig";
+import { TIER_CONFIG, type DryTyreCompound, type TierId } from "../core/GameConfig";
 import { availableTyreCompounds, parseTrackCondition, recommendedTyreCompound } from "../core/RaceTyreSelection";
 import { calculateCircuitCarScore } from "../core/CircuitCarScore";
 import { calculateWeatherAdaptation } from "../core/WeatherEngine";
+import { planMandatoryDryTwoCompoundStrategy } from "../core/MandatoryDryTyreStrategy";
 import type { TyreCompound } from "../core/TyreEngine";
 import { calculateBalanceAfterTransaction, calculateOperatingCostPerRound } from "../core/EconomyEngine";
 import { calculateTeamRacePayrollCosts } from "../core/RaceFinanceService";
@@ -219,7 +220,14 @@ async function upsertTeamStanding(
   }
 }
 
-async function simulateNextRace(database: IDatabase, careerId: string, tier: TierId, seed: string, compound: TyreCompound): Promise<RaceWeekendResult> {
+async function simulateNextRace(
+  database: IDatabase,
+  careerId: string,
+  tier: TierId,
+  seed: string,
+  compound: TyreCompound,
+  pitStrategy?: { readonly secondCompound: DryTyreCompound; readonly pitLap: number; readonly pitLossSeconds: number },
+): Promise<RaceWeekendResult> {
   const careerStateRows = await database.query("SELECT current_season, current_division_tier FROM career WHERE career_id = ?;", [careerId]);
   const careerState = careerStateRows[0];
   if (!careerState) throw new Error("Career tidak ditemukan.");
@@ -258,6 +266,37 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     tyreManagement: numberField(driver, "tyre_management"), mechanicalGrip: numberField(driver, "mechanical_grip"),
     compound: numberField(driver, "is_player_team") === 1 ? compound : aiCompound, weatherAdaptation: calculateWeatherAdaptation({ adaptability: numberField(driver, "adaptability"), wetSkill: numberField(driver, "wet_skill") }),
   }));
+  let raceWeekendDrivers = driverInputs;
+  if (pitStrategy && tier <= 3 && trackCondition === "dry") {
+    const sourceDriverById = new Map(raceDrivers.map((driver) => [String(driver.driver_id), driver]));
+    raceWeekendDrivers = driverInputs.map((driver) => {
+      const sourceDriver = sourceDriverById.get(driver.id);
+      if (!sourceDriver) throw new Error("Driver race strategy tidak ditemukan: " + driver.id);
+      const isPlayerDriver = numberField(sourceDriver, "is_player_team") === 1;
+      const strategy = planMandatoryDryTwoCompoundStrategy({
+        tier,
+        totalLaps: Number(race.laps),
+        trackAbrasion: Number(race.abrasion),
+        trackTemperatureCelsius: 25,
+        driverAggression: driver.aggression,
+        mechanicalGrip: driver.mechanicalGrip,
+        driverTyreManagement: driver.tyreManagement,
+        pitLossSeconds: pitStrategy.pitLossSeconds,
+        ...(isPlayerDriver ? {
+          preferredFirstCompound: compound as DryTyreCompound,
+          preferredSecondCompound: pitStrategy.secondCompound,
+          preferredPitLap: pitStrategy.pitLap,
+        } : {}),
+      });
+      return {
+        ...driver,
+        compound: strategy.firstCompound,
+        compoundByLap: strategy.compoundByLap,
+        pitStopByLap: strategy.pitStopByLap,
+        pitLossSecondsByLap: strategy.pitLossSecondsByLap,
+      };
+    });
+  }
   const weekend = simulateRaceWeekend({
     worldSeed: seed, season, round: Number(race.round), tier,
     estimatedCircuitLapSeconds: Number(race.estimated_lap_seconds), totalLaps: Number(race.laps),
@@ -265,13 +304,9 @@ async function simulateNextRace(database: IDatabase, careerId: string, tier: Tie
     trackCondition, referenceSetupScore: 50,
     hasSprint: Number(race.has_sprint) === 1,
     overtakingDifficulty: Number(race.overtaking_difficulty),
-    drivers: driverInputs,
+    drivers: raceWeekendDrivers,
   });
   const teamByDriver = new Map(raceDrivers.map((driver) => [String(driver.driver_id), String(driver.team_id)]));
-  const compoundByDriver = new Map(raceDrivers.map((driver) => [
-    String(driver.driver_id),
-    numberField(driver, "is_player_team") === 1 ? compound : aiCompound,
-  ]));
   const qualifyingGridByDriver = new Map(weekend.qualifying.classification.map((row) => [row.driverId, row.gridPosition]));
   const raceGridByDriver = new Map(weekend.raceStartingGrid.map((driverId, index) => [driverId, index + 1]));
   const sprintGridByDriver = new Map((weekend.sprintStartingGrid ?? []).map((driverId, index) => [driverId, index + 1]));
@@ -403,6 +438,9 @@ export default function CareerMode() {
   const [tab, setTab] = useState<Tab>("overview");
   const [runningRace, setRunningRace] = useState(false);
   const [selectedTyreCompound, setSelectedTyreCompound] = useState<TyreCompound>("medium");
+  const [selectedSecondDryCompound, setSelectedSecondDryCompound] = useState<DryTyreCompound>("hard");
+  const [pitLapInput, setPitLapInput] = useState("");
+  const [pitLossOverride, setPitLossOverride] = useState("");
   const [settlingSeason, setSettlingSeason] = useState(false);
   const [seasonProgress, setSeasonProgress] = useState("");
   const [settlementError, setSettlementError] = useState("");
@@ -1025,14 +1063,37 @@ export default function CareerMode() {
     try {
       const seasonRows = await database.query("SELECT current_season FROM career WHERE career_id = ?;", [activeSave.careerId]);
       const nextRaceRows = await database.query(
-        "SELECT track_condition FROM races WHERE division_id = ? AND season = ? AND status = 'scheduled' ORDER BY round LIMIT 1;",
+        "SELECT track_condition, laps FROM races WHERE division_id = ? AND season = ? AND status = 'scheduled' ORDER BY round LIMIT 1;",
         ["T" + activeSave.tier, numberField(seasonRows[0], "current_season", 1)],
       );
-      const trackCondition = parseTrackCondition(nextRaceRows[0]?.track_condition);
+      const nextRaceRow = nextRaceRows[0];
+      if (!nextRaceRow) throw new Error("Semua race season ini sudah selesai.");
+      const trackCondition = parseTrackCondition(nextRaceRow.track_condition);
       const availableCompounds = availableTyreCompounds(activeSave.tier, trackCondition);
       const raceCompound = availableCompounds.includes(selectedTyreCompound)
         ? selectedTyreCompound : recommendedTyreCompound(activeSave.tier, trackCondition);
-      const result = await simulateNextRace(database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""), raceCompound);
+      let pitStrategy: { secondCompound: DryTyreCompound; pitLap: number; pitLossSeconds: number } | undefined;
+      if (activeSave.tier <= 3 && trackCondition === "dry") {
+        const totalLaps = numberField(nextRaceRow, "laps");
+        const pitLap = Number(pitLapInput);
+        const pitLossSeconds = Number(pitLossOverride);
+        const allowedDryCompounds = TIER_CONFIG[activeSave.tier].allowedDryCompounds;
+        if (!Number.isFinite(pitLossSeconds) || pitLossSeconds <= 0) {
+          throw new Error("Dry race Tier 1–3 wajib memakai QA total pit-loss override positif. Nilai ini bukan default resmi game.");
+        }
+        if (!Number.isSafeInteger(pitLap) || pitLap < 2 || pitLap >= totalLaps) {
+          throw new Error("Pilih pit lap antara lap 2 dan lap terakhir dikurangi satu.");
+        }
+        if (!allowedDryCompounds.includes(raceCompound as DryTyreCompound)
+            || !allowedDryCompounds.includes(selectedSecondDryCompound)
+            || raceCompound === selectedSecondDryCompound) {
+          throw new Error("Strategi wajib memakai dua compound kering yang berbeda dan legal untuk tier ini.");
+        }
+        pitStrategy = { secondCompound: selectedSecondDryCompound, pitLap, pitLossSeconds };
+      }
+      const result = await simulateNextRace(
+        database, activeSave.careerId, activeSave.tier, String(dashboard?.career.world_seed ?? ""), raceCompound, pitStrategy,
+      );
       const playerTeamRows = await database.query("SELECT team_id FROM teams WHERE career_id = ? AND is_player_team = 1 AND is_active = 1;", [activeSave.careerId]);
       if (playerTeamRows[0]) {
         try {
@@ -1103,7 +1164,32 @@ export default function CareerMode() {
       <nav className="career-tabs">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
       {tab === "overview" && <section className="career-grid">
         <article className="career-panel wide-panel"><div className="panel-title"><div><small>RACE CONTROL</small><h2>{nextRace ? "Next race" : "Season completed"}</h2></div><span className="status-chip">{nextRace ? "SCHEDULED" : "COMPLETE"}</span></div>
-          {nextRace ? <><p className="next-race-name">{field(nextRace, "circuit_name")} <span>· {field(nextRace, "circuit_country")}</span></p><div className="stat-strip"><span>ROUND <b>{field(nextRace, "round")}/{dashboard.races.length}</b></span><span>LAPS <b>{field(nextRace, "laps")}</b></span><span>SPRINT <b>{numberField(nextRace, "has_sprint") ? "YES" : "NO"}</b></span><span>TRACK <b>{raceTrackCondition.toUpperCase()}</b></span></div><div className="form-grid race-strategy-grid"><label>Race tyre compound<select value={raceCompound} onChange={(event) => setSelectedTyreCompound(event.target.value as TyreCompound)}>{availableCompounds.map((compound) => <option key={compound} value={compound}>{compound.toUpperCase()}</option>)}</select></label></div>{dashboard.roster.length < 2 ? <><p className="inline-error">Roster belum memiliki dua driver race yang eligible untuk season ini. Lengkapi kursi di Transfer Market sebelum memulai race.</p><button className="primary-button" onClick={() => setTab("roster")}>Open driver market →</button></> : <button className="primary-button" disabled={runningRace} onClick={() => void runNextRace()}>{runningRace ? "Simulating race…" : "Run race weekend →"}</button>}{raceError && <p className="inline-error">{raceError}</p>}</> : dashboard.promotionOffer ? <><p className="muted-text">Season {numberField(dashboard.career, "current_season", 1)} selesai. {numberField(dashboard.promotionOffer, "unlock_awarded") ? "Juara konstruktor membuka divisi berikutnya secara permanen untuk save ini. " : ""}Kamu bisa naik divisi sekarang atau tetap di divisi saat ini.</p><div className="settlement-summary"><span>CURRENT DIVISION <b>Tier {field(dashboard.promotionOffer, "current_tier")}</b></span><span>TARGET DIVISION <b>Tier {field(dashboard.promotionOffer, "target_tier")} · {TIER_CONFIG[tierFromValue(field(dashboard.promotionOffer, "target_tier"))].name}</b></span><span>TEAM EXCHANGE <b>{field(dashboard.promotionOffer, "target_team_name", "Bottom-ranked team")}</b></span><span>THEIR CASH <b>{formatCash(numberField(dashboard.promotionOffer, "target_team_cash"))}</b></span></div><p className="form-note">Jika memilih naik, tim kamu menukar slot dengan tim terbawah di divisi target. Pemain di divisi baru harus memenuhi batas umur; rekrutmen tersedia di Transfer Market.</p><div className="create-career-actions"><button className="primary-button" disabled={settlingSeason} onClick={() => void resolvePromotionOffer(field(dashboard.promotionOffer, "offer_id"), "promote")}>{settlingSeason ? "Preparing next season…" : "Promote to Tier " + field(dashboard.promotionOffer, "target_tier") + " →"}</button><button className="secondary-button" disabled={settlingSeason} onClick={() => void resolvePromotionOffer(field(dashboard.promotionOffer, "offer_id"), "stay")}>Stay in Tier {field(dashboard.promotionOffer, "current_tier")}</button></div>{settlementError && <p className="inline-error">{settlementError}</p>}</> : dashboard.settlements.length ? <><p className="muted-text">Season {numberField(dashboard.career, "current_season", 1)} sudah ditutup untuk tim kamu. Saldo akhir: {formatCash(numberField(dashboard.settlements[0], "closing_cash"))}.</p><div className="settlement-summary"><span>Prize money <b>{formatCash(numberField(dashboard.settlements[0], "prize_money"))}</b></span><span>Commercial <b>{formatCash(numberField(dashboard.settlements[0], "commercial_revenue"))}</b></span><span>Sponsor <b>{formatCash(numberField(dashboard.settlements[0], "sponsor_revenue"))}</b></span><span>Net season <b>{formatCash(numberField(dashboard.settlements[0], "net_amount"))}</b></span></div>{(dashboard.pendingWorldRaces > 0 || dashboard.unsettledWorldDivisions > 0 || dashboard.worldTransitionPending) && <><p className="muted-text">{dashboard.pendingWorldRaces > 0 ? dashboard.pendingWorldRaces + " race di divisi lain belum disimulasikan." : dashboard.unsettledWorldDivisions > 0 ? dashboard.unsettledWorldDivisions + " divisi belum menyelesaikan settlement finansial." : "World transition belum selesai. Lanjutkan agar kalender, mobil, dan roster AI season berikutnya disiapkan."}</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish remaining divisions →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}{dashboard.pendingWorldRaces === 0 && dashboard.unsettledWorldDivisions === 0 && <p className="muted-text">{seasonProgress || "Season finances are settled. Next-season calendar and contract rollover are not available yet."}</p>}</> : <><p className="muted-text">Semua ronde season ini selesai. Tutup season untuk memproses hadiah, pendapatan komersial, sponsor, bunga utang, dan maintenance fasilitas.</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish world season & settle finances →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}
+          {nextRace ? <><p className="next-race-name">{field(nextRace, "circuit_name")} <span>· {field(nextRace, "circuit_country")}</span></p><div className="stat-strip"><span>ROUND <b>{field(nextRace, "round")}/{dashboard.races.length}</b></span><span>LAPS <b>{field(nextRace, "laps")}</b></span><span>SPRINT <b>{numberField(nextRace, "has_sprint") ? "YES" : "NO"}</b></span><span>TRACK <b>{raceTrackCondition.toUpperCase()}</b></span></div><div className="form-grid race-strategy-grid">
+            <label>Race starting tyre compound
+              <select value={raceCompound} onChange={(event) => {
+                const nextCompound = event.target.value as TyreCompound;
+                setSelectedTyreCompound(nextCompound);
+                if (activeSave.tier <= 3 && raceTrackCondition === "dry" && selectedSecondDryCompound === nextCompound) {
+                  const replacementCompound = TIER_CONFIG[activeSave.tier].allowedDryCompounds.find((candidate) => candidate !== nextCompound);
+                  if (replacementCompound) setSelectedSecondDryCompound(replacementCompound);
+                }
+              }}>{availableCompounds.map((compound) => <option key={compound} value={compound}>{compound.toUpperCase()}</option>)}</select>
+            </label>
+            {activeSave.tier <= 3 && raceTrackCondition === "dry" && <>
+              <label>Second dry compound
+                <select value={selectedSecondDryCompound} onChange={(event) => setSelectedSecondDryCompound(event.target.value as DryTyreCompound)}>
+                  {TIER_CONFIG[activeSave.tier].allowedDryCompounds.filter((compound) => compound !== raceCompound).map((compound) => <option key={compound} value={compound}>{compound.toUpperCase()}</option>)}
+                </select>
+              </label>
+              <label>Planned pit lap
+                <input type="number" min="2" max={Math.max(2, Number(field(nextRace, "laps")) - 1)} step="1" value={pitLapInput} placeholder="Required" onChange={(event) => setPitLapInput(event.target.value)} />
+              </label>
+              <label>QA total pit-loss override (seconds)
+                <input type="number" min="0" step="any" value={pitLossOverride} placeholder="Required for dry Tier 1–3" onChange={(event) => setPitLossOverride(event.target.value)} />
+              </label>
+            </>}
+          </div>
+          {activeSave.tier <= 3 && raceTrackCondition === "dry" && <p className="muted-text">Development-test mode: the dry race requires two different compounds and one pit stop. Total pit loss is an explicit QA override, not an official default. Exact pit-error probability curves and stationary times for every tier are still unresolved in the source configuration.</p>}{dashboard.roster.length < 2 ? <><p className="inline-error">Roster belum memiliki dua driver race yang eligible untuk season ini. Lengkapi kursi di Transfer Market sebelum memulai race.</p><button className="primary-button" onClick={() => setTab("roster")}>Open driver market →</button></> : <button className="primary-button" disabled={runningRace} onClick={() => void runNextRace()}>{runningRace ? "Simulating race…" : "Run race weekend →"}</button>}{raceError && <p className="inline-error">{raceError}</p>}</> : dashboard.promotionOffer ? <><p className="muted-text">Season {numberField(dashboard.career, "current_season", 1)} selesai. {numberField(dashboard.promotionOffer, "unlock_awarded") ? "Juara konstruktor membuka divisi berikutnya secara permanen untuk save ini. " : ""}Kamu bisa naik divisi sekarang atau tetap di divisi saat ini.</p><div className="settlement-summary"><span>CURRENT DIVISION <b>Tier {field(dashboard.promotionOffer, "current_tier")}</b></span><span>TARGET DIVISION <b>Tier {field(dashboard.promotionOffer, "target_tier")} · {TIER_CONFIG[tierFromValue(field(dashboard.promotionOffer, "target_tier"))].name}</b></span><span>TEAM EXCHANGE <b>{field(dashboard.promotionOffer, "target_team_name", "Bottom-ranked team")}</b></span><span>THEIR CASH <b>{formatCash(numberField(dashboard.promotionOffer, "target_team_cash"))}</b></span></div><p className="form-note">Jika memilih naik, tim kamu menukar slot dengan tim terbawah di divisi target. Pemain di divisi baru harus memenuhi batas umur; rekrutmen tersedia di Transfer Market.</p><div className="create-career-actions"><button className="primary-button" disabled={settlingSeason} onClick={() => void resolvePromotionOffer(field(dashboard.promotionOffer, "offer_id"), "promote")}>{settlingSeason ? "Preparing next season…" : "Promote to Tier " + field(dashboard.promotionOffer, "target_tier") + " →"}</button><button className="secondary-button" disabled={settlingSeason} onClick={() => void resolvePromotionOffer(field(dashboard.promotionOffer, "offer_id"), "stay")}>Stay in Tier {field(dashboard.promotionOffer, "current_tier")}</button></div>{settlementError && <p className="inline-error">{settlementError}</p>}</> : dashboard.settlements.length ? <><p className="muted-text">Season {numberField(dashboard.career, "current_season", 1)} sudah ditutup untuk tim kamu. Saldo akhir: {formatCash(numberField(dashboard.settlements[0], "closing_cash"))}.</p><div className="settlement-summary"><span>Prize money <b>{formatCash(numberField(dashboard.settlements[0], "prize_money"))}</b></span><span>Commercial <b>{formatCash(numberField(dashboard.settlements[0], "commercial_revenue"))}</b></span><span>Sponsor <b>{formatCash(numberField(dashboard.settlements[0], "sponsor_revenue"))}</b></span><span>Net season <b>{formatCash(numberField(dashboard.settlements[0], "net_amount"))}</b></span></div>{(dashboard.pendingWorldRaces > 0 || dashboard.unsettledWorldDivisions > 0 || dashboard.worldTransitionPending) && <><p className="muted-text">{dashboard.pendingWorldRaces > 0 ? dashboard.pendingWorldRaces + " race di divisi lain belum disimulasikan." : dashboard.unsettledWorldDivisions > 0 ? dashboard.unsettledWorldDivisions + " divisi belum menyelesaikan settlement finansial." : "World transition belum selesai. Lanjutkan agar kalender, mobil, dan roster AI season berikutnya disiapkan."}</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish remaining divisions →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}{dashboard.pendingWorldRaces === 0 && dashboard.unsettledWorldDivisions === 0 && <p className="muted-text">{seasonProgress || "Season finances are settled. Next-season calendar and contract rollover are not available yet."}</p>}</> : <><p className="muted-text">Semua ronde season ini selesai. Tutup season untuk memproses hadiah, pendapatan komersial, sponsor, bunga utang, dan maintenance fasilitas.</p><button className="primary-button" disabled={settlingSeason} onClick={() => void settleSeason()}>{settlingSeason ? (seasonProgress || "Finishing world season…") : "Finish world season & settle finances →"}</button>{settlingSeason && <p className="muted-text">{seasonProgress}</p>}{settlementError && <p className="inline-error">{settlementError}</p>}</>}
         </article>
         <article className="career-panel"><small>WORLD STATUS</small><div className="big-number">{dashboard.teams.length}<span>/ 12</span></div><p>Teams in this division</p><div className="stat-line"><span>Drivers in roster</span><b>{dashboard.roster.length}/2</b></div><div className="stat-line"><span>Active sponsor offers</span><b>{dashboard.sponsors.length}</b></div></article>
         <article className="career-panel"><small>BOARD OBJECTIVES</small><h2>Confidence {numberField(dashboard.manager ?? undefined, "confidence", 60)}%</h2><p className="muted-text">Manager reputation {numberField(dashboard.manager ?? undefined, "reputation")}</p>{dashboard.boardWarnings.map((warning) => <div className="notice" key={field(warning, "warning_id")}><strong>Board Objective at risk</strong><p>{field(warning, "message")}</p><small>Informational checkpoint only. Manager confidence is unchanged.</small></div>)}{dashboard.boardObjectives.map((objective) => { const objectiveType = field(objective, "objective_type"); let status = "Pending"; const rawResult = field(objective, "result"); if (rawResult) { try { const parsed = JSON.parse(rawResult) as { achieved?: boolean | null }; status = parsed.achieved === true ? "Achieved" : parsed.achieved === false ? "Missed" : "Resolved"; } catch { status = "Resolved"; } } const label = objectiveType === "standings" ? "Constructor target P" + field(objective, "target_value") : objectiveType === "financial" ? "Closing cash target" : "Division unlock"; return <div className="stat-line" key={objectiveType}><span>{label}</span><b>{status}</b></div>; })}{dashboard.manager && field(dashboard.manager, "status") !== "active" && <p className="inline-error">Manager status: {field(dashboard.manager, "status")}. Pilih tawaran tim untuk melanjutkan karier.</p>}{dashboard.jobOffers.map((offer) => <div className="job-offer-row" key={field(offer, "offer_id")}><div><b>{field(offer, "team_name")}</b><small>Tier {tierFromValue(field(offer, "division_id"))} · {field(offer, "reason")}</small></div><div className="sponsor-actions"><button className="mini-action accept" onClick={() => void resolveManagerOffer(field(offer, "offer_id"), true)}>Accept</button><button className="mini-action" onClick={() => void resolveManagerOffer(field(offer, "offer_id"), false)}>Decline</button></div></div>)}</article>
