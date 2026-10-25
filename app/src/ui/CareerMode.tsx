@@ -1247,14 +1247,15 @@ export default function CareerMode() {
             <label>Driver<select required value={marketDriverId} onChange={(event) => {
               const id = event.target.value;
               setMarketDriverId(id);
+              setMarketActivateReleaseClause(false);
               const candidate = marketDrivers.find((row) => field(row, "driver_id") === id);
               if (candidate) {
-                const targetSeason = numberField(dashboard.career, "current_season", 1) + 1;
+                const targetSeason = marketTargetSeason;
                 const salary = calculateDriverAskingSalary({ marketValue: numberField(candidate, "market_value"), ambition: numberField(candidate, "ambition", 50), demandFactor: generateDriverDemandFactor({ worldSeed: String(dashboard.career.world_seed ?? ""), season: targetSeason, driverId: id }) });
                 setMarketSalary(String(salary));
               }
               setMarketResult(null);
-            }}><option value="" disabled>Select driver</option>{marketDrivers.map((driver) => <option key={field(driver, "driver_id")} value={field(driver, "driver_id")}>{field(driver, "name")} · Age {field(driver, "age")} · Pace {numberField(driver, "pace").toFixed(0)}{numberField(driver, "is_academy_driver") ? " · Academy" : ""}</option>)}</select></label>
+            }}><option value="" disabled>Select driver</option>{marketDrivers.map((driver) => <option key={field(driver, "driver_id")} value={field(driver, "driver_id")}>{field(driver, "name")} · Age {field(driver, "age")} · Pace {numberField(driver, "pace").toFixed(0)}{numberField(driver, "is_academy_driver") ? " · Academy" : ""}{field(driver, "release_clause_contract_id") ? " · RELEASE CLAUSE " + formatCash(numberField(driver, "active_release_clause")) : ""}</option>)}</select></label>
             <div className="form-grid">
               <label>Annual salary (¢p)<input type="number" min="1" step="1" required value={marketSalary} onChange={(event) => setMarketSalary(event.target.value)} /></label>
               <label>Contract length<select value={marketDuration} onChange={(event) => setMarketDuration(event.target.value)}>{[1, 2, 3, 4].filter((length) => {
@@ -1268,8 +1269,12 @@ export default function CareerMode() {
               <label>Championship bonus (¢p)<input type="number" min="0" step="1" required value={marketChampionshipBonus} onChange={(event) => setMarketChampionshipBonus(event.target.value)} /></label>
               <label>Release clause (¢p)<input type="number" min="0" step="1" required value={marketReleaseClause} onChange={(event) => setMarketReleaseClause(event.target.value)} /><small>0 = no clause; otherwise 1.5–3× annual salary.</small></label>
             </div>
-            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable}>{marketBusy ? "Negotiating…" : "Submit contract offer →"}</button>
-          </form> : <p className="muted-text">Tidak ada free agent yang memenuhi band umur tier ini. Kandidat dengan kontrak aktif tidak ditampilkan.</p>}
+            {field(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "release_clause_contract_id") && <label className="release-clause-toggle">
+              <input type="checkbox" checked={marketActivateReleaseClause} onChange={(event) => setMarketActivateReleaseClause(event.target.checked)} />
+              Activate release clause buyout: pay {formatCash(numberField(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "active_release_clause"))} to the current team. The driver's new contract offer must still be accepted.
+            </label>}
+            <button className="primary-button" type="submit" disabled={marketBusy || !marketDriverId || !marketSeatsAvailable || (!!field(marketDrivers.find((row) => field(row, "driver_id") === marketDriverId), "release_clause_contract_id") && !marketActivateReleaseClause)}>{marketBusy ? "Negotiating…" : marketActivateReleaseClause ? "Buy out clause & offer contract →" : "Submit contract offer →"}</button>
+          </form> : <p className="muted-text">Tidak ada free agent atau driver ber-release-clause yang memenuhi band umur tier ini pada jendela transfer saat ini.</p>}
         </article>
       </section>}
       {tab === "roster" && <YouthLoanPanel
