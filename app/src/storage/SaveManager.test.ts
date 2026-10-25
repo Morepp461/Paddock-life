@@ -14,6 +14,18 @@ class MemorySaveStorage implements SaveStorage {
   }
 }
 
+class QuotaFailureSaveStorage extends MemorySaveStorage {
+  failCurrentWrite = false;
+  override async writeAtomic(slotId: string, key: "current" | "backup-1" | "backup-2", record: SaveRecord): Promise<void> {
+    if (this.failCurrentWrite && key === "current") {
+      const error = new Error("Storage quota exceeded.");
+      error.name = "QuotaExceededError";
+      throw error;
+    }
+    await super.writeAtomic(slotId, key, record);
+  }
+}
+
 const digest = async (data: Uint8Array) =>
   Array.from(data, (byte) => byte.toString(16).padStart(2, "0")).join("").padEnd(64, "0").slice(0, 64);
 
@@ -104,5 +116,28 @@ describe("SaveManager", () => {
     const manager = makeManager(new MemorySaveStorage());
     await expect(manager.save({ slotId: "../escape", careerId: "c", data: new Uint8Array([1]), trigger: "manual", isSandbox: false })).rejects.toThrow("slot");
     await expect(manager.save({ slotId: "slot", careerId: "c", data: new Uint8Array(), trigger: "manual", isSandbox: false })).rejects.toThrow("kosong");
+  });
+
+
+  it("preserves the last valid save when storage quota blocks the current snapshot write", async () => {
+    const storage = new QuotaFailureSaveStorage();
+    const manager = makeManager(storage);
+    await manager.save({ slotId: "slot-quota", careerId: "career-quota", data: new Uint8Array([1, 2, 3]), trigger: "manual", isSandbox: false });
+
+    storage.failCurrentWrite = true;
+    await expect(manager.save({
+      slotId: "slot-quota", careerId: "career-quota", data: new Uint8Array([4, 5, 6]),
+      trigger: "race-completed", isSandbox: false,
+    })).rejects.toMatchObject({ name: "QuotaExceededError" });
+    expect(Array.from((await manager.load("slot-quota", "career-quota"))!.data)).toEqual([1, 2, 3]);
+    expect(Array.from((await manager.loadBackup("slot-quota", "career-quota", "backup-1")).data)).toEqual([1, 2, 3]);
+
+    storage.failCurrentWrite = false;
+    await manager.save({
+      slotId: "slot-quota", careerId: "career-quota", data: new Uint8Array([4, 5, 6]),
+      trigger: "race-completed", isSandbox: false,
+    });
+    expect(Array.from((await manager.load("slot-quota", "career-quota"))!.data)).toEqual([4, 5, 6]);
+    expect(Array.from((await manager.loadBackup("slot-quota", "career-quota", "backup-1")).data)).toEqual([1, 2, 3]);
   });
 });
