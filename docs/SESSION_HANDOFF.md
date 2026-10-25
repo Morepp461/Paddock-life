@@ -9,14 +9,9 @@ Source of truth: `Paddock_Life_Docs_FINAL.zip` and the final specification docum
 
 - Default branch: `main`
 - Latest main commit at handoff: `957ba2d2f2c52cd62da13b5e0deb0f7867eb5405`; CI and Android Debug APK workflows were still running at the last check. The preceding main commit `88f39e0cb943ecf921fb7c32be3bffdd35e16df5` had green CI.
-- GitHub Actions on that commit:
-  - `CI`: completed successfully.
-  - `Android Debug APK`: completed successfully.
+- GitHub Actions on the preceding main commit `88f39e0cb943ecf921fb7c32be3bffdd35e16df5`: `CI` and `Android Debug APK` both completed successfully. CI and Android build for `957ba2d2f2c52cd62da13b5e0deb0f7867eb5405` were still running at the last check.
 - This means the project can produce a debug APK, **not** that the game has been verified on a real Android device or is release-ready.
-- An open PR list was observed at handoff:
-  - #75 `test: align contract validation with generated season-one roster` (head `fix/contract-validation-test-baseline`, base `feat/contract-terms-validation`).
-  - #64 `fix: finish contract service type narrowing` (head `fix/contract-service-final-types-v2`, base `fix/contract-service-final-types`).
-  - #3 and #4 are older simulation PRs. Inspect current status and ancestry before merging anything; do not merge stale PRs blindly.
+- Check the live open-PR list before continuing. Do not rely on old PR numbers or merge stale branches.
 - Use a fresh `feat/<system>`, `fix/<system>`, or `docs/<topic>` branch for each change. Keep `main` stable. Review the diff and CI before merge.
 
 ## Implemented on main (per current README and merged work)
