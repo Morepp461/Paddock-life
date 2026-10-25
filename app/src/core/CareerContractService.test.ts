@@ -184,4 +184,94 @@ describe("career transfer window enforcement", () => {
       await database.close();
     }
   });
+
+
+describe("release-clause driver transfers", () => {
+  async function setupBuyout() {
+    const context = await setup();
+    const { database, career, teamId, driver } = context;
+    await database.run("UPDATE career SET current_season = 2, current_race = 9 WHERE career_id = ?;", [career.careerId]);
+    const sellerRows = await database.query(
+      "SELECT team_id FROM teams WHERE career_id = ? AND division_id = 'T3' AND is_player_team = 0 AND is_active = 1 AND team_id <> ? ORDER BY team_id LIMIT 1;",
+      [career.careerId, teamId],
+    );
+    if (!sellerRows[0]) throw new Error("Seller team not found.");
+    const sellerTeamId = String(sellerRows[0].team_id);
+    await database.run(
+      "INSERT INTO driver_contracts (contract_id, driver_id, team_id, start_season, end_season, salary, signing_bonus, win_bonus, podium_bonus, championship_bonus, release_clause, team_option, driver_option) VALUES (?, ?, ?, 2, 3, 100000, 0, 0, 0, 0, 150000, 0, 0);",
+      ["contract_release_test", String(driver.driver_id), sellerTeamId],
+    );
+    const balances = await database.query("SELECT team_id, cash FROM teams WHERE team_id IN (?, ?);", [teamId, sellerTeamId]);
+    return { ...context, sellerTeamId, buyerCash: Number(balances.find((row) => String(row.team_id) === teamId)!.cash),
+      sellerCash: Number(balances.find((row) => String(row.team_id) === sellerTeamId)!.cash) };
+  }
+
+  it("buys out an active release clause atomically and preserves contract history", async () => {
+    const { database, career, teamId, driver, sellerTeamId, buyerCash, sellerCash } = await setupBuyout();
+    try {
+      const askingSalary = calculateDriverAskingSalary({
+        marketValue: Number(driver.market_value),
+        ambition: Number(driver.ambition),
+        demandFactor: generateDriverDemandFactor({ worldSeed: "contract-service-test", season: 2, driverId: String(driver.driver_id) }),
+      });
+      const result = await offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: Math.round(askingSalary * 1.2),
+        signingBonus: 1000, championshipBonus: askingSalary, releaseClause: null,
+        releaseClauseContractId: "contract_release_test", role: "lead",
+      });
+      expect(result.decision).toBe("accepted");
+      expect(result.contractId).toBeTruthy();
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE contract_id = 'contract_release_test';")).toEqual([{ count: 0 }]);
+      expect(await database.query("SELECT team_id, start_season, end_season FROM driver_contracts WHERE contract_id = ?;", [result.contractId])).toEqual([
+        { team_id: teamId, start_season: 2, end_season: 3 },
+      ]);
+      expect(await database.query("SELECT from_team_id, to_team_id, release_clause_paid FROM driver_transfer_events WHERE old_contract_id = 'contract_release_test';")).toEqual([
+        { from_team_id: sellerTeamId, to_team_id: teamId, release_clause_paid: 150000 },
+      ]);
+      expect(await database.query("SELECT category, amount FROM finances WHERE transaction_id LIKE 'release-clause-%' ORDER BY category;")).toEqual([
+        { category: "driver-release-clause-received", amount: 150000 },
+        { category: "driver-release-clause", amount: -150000 },
+      ]);
+      expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [teamId])).toEqual([{ cash: buyerCash - 151000 }]);
+      expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [sellerTeamId])).toEqual([{ cash: sellerCash + 150000 }]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("does not pay the release clause when the driver's contract offer is rejected", async () => {
+    const { database, career, teamId, driver, sellerTeamId, sellerCash } = await setupBuyout();
+    try {
+      const result = await offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 1, offeredSalary: 0,
+        releaseClauseContractId: "contract_release_test", role: "second",
+      });
+      expect(result.decision).toBe("rejected");
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE contract_id = 'contract_release_test';")).toEqual([{ count: 1 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_transfer_events;")).toEqual([{ count: 0 }]);
+      expect(await database.query("SELECT cash FROM teams WHERE team_id = ?;", [sellerTeamId])).toEqual([{ cash: sellerCash }]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("blocks a release-clause transfer outside the mid-season window without changing the contract", async () => {
+    const { database, career, teamId, driver } = await setupBuyout();
+    try {
+      await database.run("UPDATE career SET current_race = 2 WHERE career_id = ?;", [career.careerId]);
+      await expect(offerDriverContract(database, {
+        careerId: career.careerId, teamId, driverId: String(driver.driver_id),
+        startSeason: 2, durationSeasons: 2, offeredSalary: 100000,
+        releaseClauseContractId: "contract_release_test", role: "lead",
+      })).rejects.toThrow("Jendela transfer driver sedang tertutup");
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_contracts WHERE contract_id = 'contract_release_test';")).toEqual([{ count: 1 }]);
+      expect(await database.query("SELECT COUNT(*) AS count FROM driver_transfer_events;")).toEqual([{ count: 0 }]);
+    } finally {
+      await database.close();
+    }
+  });
+});
+
 });
