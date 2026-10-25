@@ -268,11 +268,11 @@ export async function generateCareerWorld(
         `INSERT INTO teams
           (team_id, career_id, division_id, pool_team_id, name, is_player_team, base_country, is_active, origin,
            founded_season, strength_grade, finance_grade, performance_grade, personality, reputation, cash, debt, budget,
-           aero_center_level, engine_dept_level, chassis_level, simulator_level, rnd_level, academy_level, reliability)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+           aero_center_level, engine_dept_level, chassis_level, simulator_level, rnd_level, academy_level, training_facilities_level, reliability)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [teamId, careerId, "T" + tier, source.pool_team_id, teamName, isPlayer ? 1 : 0, baseCountry, origin,
           strengthGrade, financeGrade, performanceGrade, source.personality, rep, cash, debt, config.requiredBudget,
-          facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel,
+          facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel, facilityLevel,
           clamp(distribution.reliabilityMean + PERFORMANCE_GRADE_OFFSETS[performanceGrade].reliability, 0, 100)],
       );
       await database.run(
